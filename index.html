@@ -8,17 +8,16 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="MyDrive">
-<meta name="description" content="Read, look up, keep.">
 <style>
 :root{
-  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue","Apple SD Gothic Neo","Pretendard Variable",Pretendard,system-ui,sans-serif;
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Apple SD Gothic Neo","Pretendard Variable",Pretendard,system-ui,sans-serif;
   --serif:ui-serif,"New York","Iowan Old Style",Charter,"AppleMyungjo","Nanum Myeongjo",Georgia,serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --blue:#007AFF; --blue-press:#0066D6;
   --label:#1D1D1F; --label2:#6E6E73; --label3:#8E8E93; --label4:#B0B0B5;
   --window:#F5F5F7; --content:#FFFFFF; --elevated:#FFFFFF;
-  --reading:#FFFFFF; --reading-ink:#1D1D1F;
+  --reading-ink:#1D1D1F;
   --fill1:rgba(116,116,128,.16); --fill2:rgba(116,116,128,.10); --fill3:rgba(116,116,128,.06);
   --sep:rgba(60,60,67,.14); --sep-strong:rgba(60,60,67,.24);
   --glass:rgba(246,246,248,.72);
@@ -27,36 +26,35 @@
   --shadow-l:0 12px 40px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.06);
   --r1:8px; --r2:12px; --r3:16px; --r4:22px;
   --ease:cubic-bezier(.32,.72,0,1);
-  --hl-yellow:#FFE884; --hl-green:#B8F0C0; --hl-blue:#B9DEFF; --hl-pink:#FFC9DE; --hl-purple:#DECCFF;
+  --hl-mark:#FFF1A8; --hl-word:#FFD9B8; --memo-line:#B58A3C;
+  --mark-ink:#5C4A12; --word-ink:#6B4519;
 }
 [data-theme="dark"]{
   --label:#F5F5F7; --label2:#98989D; --label3:#8E8E93; --label4:#5A5A5F;
-  --window:#161618; --content:#1C1C1E; --elevated:#242426;
-  --reading:#1C1C1E; --reading-ink:#D8D8DD;
+  --window:#161618; --content:#1C1C1E; --elevated:#242426; --reading-ink:#D8D8DD;
   --blue:#0A84FF; --blue-press:#3D9BFF;
   --fill1:rgba(120,120,128,.36); --fill2:rgba(120,120,128,.24); --fill3:rgba(120,120,128,.14);
   --sep:rgba(255,255,255,.10); --sep-strong:rgba(255,255,255,.18);
   --glass:rgba(30,30,32,.72);
   --shadow-m:0 4px 16px rgba(0,0,0,.4); --shadow-l:0 16px 48px rgba(0,0,0,.55);
-  --hl-yellow:#6B5A16; --hl-green:#22563A; --hl-blue:#1C4269; --hl-pink:#5F2440; --hl-purple:#3E2E63;
+  --hl-mark:#5C4E18; --hl-word:#5E3D1E; --memo-line:#C9A14E;
+  --mark-ink:#F0E6CB; --word-ink:#F0DCC6;
 }
-@media (prefers-color-scheme:dark){
-  [data-theme="auto"]{
-    --label:#F5F5F7; --label2:#98989D; --label3:#8E8E93; --label4:#5A5A5F;
-    --window:#161618; --content:#1C1C1E; --elevated:#242426;
-    --reading:#1C1C1E; --reading-ink:#D8D8DD;
-    --blue:#0A84FF; --blue-press:#3D9BFF;
-    --fill1:rgba(120,120,128,.36); --fill2:rgba(120,120,128,.24); --fill3:rgba(120,120,128,.14);
-    --sep:rgba(255,255,255,.10); --sep-strong:rgba(255,255,255,.18);
-    --glass:rgba(30,30,32,.72);
-    --shadow-m:0 4px 16px rgba(0,0,0,.4); --shadow-l:0 16px 48px rgba(0,0,0,.55);
-    --hl-yellow:#6B5A16; --hl-green:#22563A; --hl-blue:#1C4269; --hl-pink:#5F2440; --hl-purple:#3E2E63;
-  }
-}
+@media (prefers-color-scheme:dark){[data-theme="auto"]{
+  --label:#F5F5F7; --label2:#98989D; --label3:#8E8E93; --label4:#5A5A5F;
+  --window:#161618; --content:#1C1C1E; --elevated:#242426; --reading-ink:#D8D8DD;
+  --blue:#0A84FF; --blue-press:#3D9BFF;
+  --fill1:rgba(120,120,128,.36); --fill2:rgba(120,120,128,.24); --fill3:rgba(120,120,128,.14);
+  --sep:rgba(255,255,255,.10); --sep-strong:rgba(255,255,255,.18);
+  --glass:rgba(30,30,32,.72);
+  --shadow-m:0 4px 16px rgba(0,0,0,.4); --shadow-l:0 16px 48px rgba(0,0,0,.55);
+  --hl-mark:#5C4E18; --hl-word:#5E3D1E; --memo-line:#C9A14E;
+  --mark-ink:#F0E6CB; --word-ink:#F0DCC6;
+}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{margin:0;background:var(--window);color:var(--label);font-family:var(--ui);font-size:14px;
-  line-height:1.47;letter-spacing:-.006em;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  line-height:1.47;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer;letter-spacing:inherit}
 input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 :focus{outline:none}
@@ -65,22 +63,22 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 ::-webkit-scrollbar-thumb{background:var(--fill1);border-radius:99px;border:2px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-track{background:transparent}
 
-.app{display:grid;grid-template-columns:230px minmax(0,1fr) 372px;height:100dvh;overflow:hidden}
+.app{display:grid;grid-template-columns:222px minmax(0,1fr) 360px;height:100dvh;overflow:hidden}
+.app.nopanel{grid-template-columns:222px minmax(0,1fr)}
+.app.nopanel>.panel{display:none}
 .sidebar{background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(30px);backdrop-filter:saturate(180%) blur(30px);
   border-right:1px solid var(--sep);display:flex;flex-direction:column;padding:14px 12px 12px;overflow:auto}
 .mark{display:flex;align-items:center;gap:9px;padding:6px 8px;margin-bottom:16px}
 .mark .glyph{width:26px;height:26px;border-radius:7px;background:linear-gradient(160deg,var(--blue),color-mix(in srgb,var(--blue) 55%,#5E5CE6));
-  display:grid;place-items:center;color:#fff;font-size:14px;font-weight:640;letter-spacing:-.02em;box-shadow:var(--shadow-s)}
+  display:grid;place-items:center;color:#fff;font-size:14px;font-weight:640;box-shadow:var(--shadow-s)}
 .mark b{font-size:15px;font-weight:600;letter-spacing:-.018em}
-.sectitle{font-size:11px;font-weight:590;color:var(--label3);padding:0 8px;margin:12px 0 5px}
 .navbtn{display:flex;align-items:center;gap:9px;width:100%;padding:6px 8px;border-radius:var(--r1);
-  transition:background .12s ease;font-size:13.5px;font-weight:450}
-.navbtn svg{width:17px;height:17px;flex:none;color:var(--label2);transition:color .12s}
+  transition:background .12s;font-size:13.5px;font-weight:450}
+.navbtn svg{width:17px;height:17px;flex:none;color:var(--label2)}
 .navbtn .n{margin-left:auto;font-size:12px;color:var(--label3);font-variant-numeric:tabular-nums}
 .navbtn:hover{background:var(--fill3)}
 .navbtn[aria-current="true"]{background:var(--fill2);font-weight:510}
 .navbtn[aria-current="true"] svg{color:var(--blue)}
-.navbtn[aria-current="true"] .n{color:var(--label2)}
 .usage{margin-top:auto;background:var(--fill3);border-radius:var(--r2);padding:10px 12px;font-size:12px;color:var(--label2)}
 .usage .u{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0}
 .usage b{font-weight:590;color:var(--label);font-variant-numeric:tabular-nums;font-size:13px}
@@ -88,254 +86,235 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 .themetog button{flex:1;padding:4px 0;border-radius:6px;font-size:11px;color:var(--label2);transition:.16s var(--ease)}
 .themetog button[aria-current="true"]{background:var(--elevated);color:var(--label);box-shadow:var(--shadow-s);font-weight:510}
 
-.main{background:var(--content);overflow:auto;position:relative;scroll-behavior:smooth}
-.toolbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;height:52px;padding:0 24px;
+.main{background:var(--content);overflow:auto;position:relative}
+.toolbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;height:50px;padding:0 20px;
   background:color-mix(in srgb,var(--content) 78%,transparent);
   -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
-  border-bottom:1px solid transparent;transition:border-color .2s ease}
+  border-bottom:1px solid transparent;transition:border-color .2s}
 .toolbar.scrolled{border-bottom-color:var(--sep)}
-.tbtitle{font-size:14px;font-weight:590;letter-spacing:-.01em;opacity:0;transform:translateY(3px);
-  transition:opacity .22s var(--ease),transform .22s var(--ease);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46%}
+.tbtitle{font-size:14px;font-weight:590;opacity:0;transform:translateY(3px);transition:.22s var(--ease);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44%}
 .toolbar.scrolled .tbtitle{opacity:1;transform:none}
 .spacer{flex:1}
 .field{display:flex;align-items:center;gap:6px;background:var(--fill3);border:1px solid transparent;border-radius:var(--r1);
-  padding:5px 9px;width:200px;transition:.18s var(--ease)}
-.field:focus-within{background:var(--elevated);border-color:var(--sep-strong);width:264px;box-shadow:0 0 0 3.5px color-mix(in srgb,var(--blue) 22%,transparent)}
+  padding:5px 9px;width:190px;transition:.18s var(--ease)}
+.field:focus-within{background:var(--elevated);border-color:var(--sep-strong);width:252px;box-shadow:0 0 0 3.5px color-mix(in srgb,var(--blue) 22%,transparent)}
 .field svg{width:14px;height:14px;color:var(--label3);flex:none}
 .field input{border:none;background:none;outline:none;width:100%;font-size:13px}
-.field input::placeholder{color:var(--label3)}
 .iconbtn{width:30px;height:30px;border-radius:var(--r1);display:grid;place-items:center;color:var(--label2);transition:.12s}
 .iconbtn:hover{background:var(--fill3);color:var(--label)}
+.iconbtn[aria-current="true"]{background:var(--fill2);color:var(--blue)}
 .iconbtn svg{width:17px;height:17px}
 
-.view{padding:8px 24px 140px;max-width:820px}
-.largetitle{display:flex;align-items:baseline;gap:10px;padding:16px 0 20px}
-.largetitle h1{font-size:32px;font-weight:640;letter-spacing:-.024em;line-height:1.1;margin:0}
+.view{padding:6px 22px 140px;max-width:920px}
+.largetitle{display:flex;align-items:baseline;gap:10px;padding:14px 0 18px}
+.largetitle h1{font-size:31px;font-weight:640;letter-spacing:-.024em;line-height:1.1;margin:0}
 .largetitle .c{font-size:16px;color:var(--label3);font-variant-numeric:tabular-nums}
-.largetitle .spacer{flex:1}
 
-.btn{border-radius:var(--r1);padding:6px 14px;font-size:13.5px;font-weight:510;background:var(--blue);color:#fff;transition:.12s ease;white-space:nowrap}
+.btn{border-radius:var(--r1);padding:6px 14px;font-size:13.5px;font-weight:510;background:var(--blue);color:#fff;transition:.12s;white-space:nowrap}
 .btn:hover{background:var(--blue-press)} .btn:active{transform:scale(.97)}
 .btn.sec{background:var(--fill2);color:var(--label)} .btn.sec:hover{background:var(--fill1)}
 .btn.plain{background:none;color:var(--blue);padding:6px 8px} .btn.plain:hover{background:var(--fill3)}
 .btn.danger{background:none;color:#FF3B30;padding:5px 9px;font-size:12.5px}
 .btn.danger:hover{background:color-mix(in srgb,#FF3B30 10%,transparent)}
 .btn.sm{padding:4px 11px;font-size:12.5px}
-.tin{background:var(--elevated);border:1px solid var(--sep-strong);border-radius:var(--r1);padding:7px 10px;font-size:13.5px;min-width:0;transition:.15s ease}
-.tin:focus{border-color:var(--blue);box-shadow:0 0 0 3.5px color-mix(in srgb,var(--blue) 22%,transparent)}
-.seg{display:inline-flex;background:var(--fill2);border-radius:9px;padding:2px;gap:2px;margin:0 0 18px;flex-wrap:wrap}
+.tin{background:var(--elevated);border:1px solid var(--sep-strong);border-radius:var(--r1);padding:7px 10px;font-size:13.5px;min-width:0;transition:.15s}
+.tin:focus{border-color:var(--blue);box-shadow:0 0 0 3.5px color-mix(in srgb,var(--blue) 22%,transparent);outline:none}
+.numin{width:60px;text-align:center;padding:6px;border-radius:var(--r1);border:1px solid var(--sep-strong);
+  background:var(--elevated);font-size:13.5px;font-variant-numeric:tabular-nums;outline:none}
+.numin:focus{border-color:var(--blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 20%,transparent)}
+.seg{display:inline-flex;background:var(--fill2);border-radius:9px;padding:2px;gap:2px;margin:0 0 16px;flex-wrap:wrap}
 .seg button{padding:5px 13px;border-radius:7px;font-size:13px;color:var(--label2);transition:.18s var(--ease)}
 .seg button[aria-current="true"]{background:var(--elevated);color:var(--label);box-shadow:var(--shadow-s);font-weight:510}
 .seg .n{font-variant-numeric:tabular-nums;opacity:.55;margin-left:4px;font-size:12px}
-
-.list{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);overflow:hidden}
-.row{display:flex;align-items:center;gap:14px;width:100%;padding:13px 15px;text-align:left;transition:background .1s;position:relative}
-.row+.row::before,.item+.item::before{content:"";position:absolute;left:15px;right:0;top:0;height:1px;background:var(--sep)}
-@media (min-resolution:2dppx){.row+.row::before,.item+.item::before{height:.5px}}
-.row:hover,.item:hover{background:var(--fill3)}
-.row .cover{width:38px;height:50px;border-radius:4px;flex:none;background:linear-gradient(150deg,var(--fill2),var(--fill1));
-  display:grid;place-items:center;font-family:var(--serif);font-size:17px;color:var(--label2);box-shadow:var(--shadow-s)}
-.row .txt{min-width:0;flex:1}
-.row h3{font-size:14.5px;font-weight:530;letter-spacing:-.01em;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row .meta{font-size:12.5px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row .pct{font-size:12px;color:var(--label3);font-variant-numeric:tabular-nums;flex:none}
-.row .bar{width:44px;height:3px;border-radius:99px;background:var(--fill1);overflow:hidden;flex:none}
-.row .bar i{display:block;height:100%;background:var(--blue);border-radius:99px}
-.chev{color:var(--label4);flex:none} .chev svg{width:13px;height:13px}
-.empty{border:1px dashed var(--sep-strong);border-radius:var(--r2);padding:26px;color:var(--label3);font-size:13.5px;text-align:center}
-.addcard{margin-top:22px;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:16px}
-.addcard textarea{width:100%;min-height:88px;resize:vertical;background:var(--content);border:1px solid var(--sep-strong);
-  border-radius:var(--r1);padding:10px;font-size:13.5px;line-height:1.55}
-.addcard textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3.5px color-mix(in srgb,var(--blue) 22%,transparent)}
-.flexrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
-
-.reader{max-width:none;padding:0 0 46vh}
-.rhead{max-width:33em;margin:20px auto 32px;padding:0 24px}
-.rhead h1{font-family:var(--serif);font-size:31px;font-weight:600;line-height:1.16;letter-spacing:-.015em;margin:12px 0 9px}
-.rhead .meta{font-size:13px;color:var(--label2)}
-.doctext{font-family:var(--serif);font-size:var(--read,19px);line-height:1.68;letter-spacing:-.003em;max-width:33em;margin:0 auto;padding:0 24px;color:var(--reading-ink)}
-.doctext p{margin:0 0 1.35em;white-space:pre-wrap}
-.doctext ::selection{background:color-mix(in srgb,var(--blue) 26%,transparent)}
-mark.hl{color:inherit;padding:.06em 0;border-radius:2px;cursor:pointer;background:var(--hl-yellow);
-  transition:filter .12s;box-decoration-break:clone;-webkit-box-decoration-break:clone}
-mark.hl[data-c="green"]{background:var(--hl-green)} mark.hl[data-c="blue"]{background:var(--hl-blue)}
-mark.hl[data-c="pink"]{background:var(--hl-pink)} mark.hl[data-c="purple"]{background:var(--hl-purple)}
-mark.hl:hover{filter:brightness(.94)} mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
-.known{border-bottom:1.5px dotted color-mix(in srgb,var(--blue) 55%,transparent);cursor:pointer}
-/* selection action bar — always in the same place, never covers the line you read */
-.abar{position:fixed;left:50%;bottom:20px;transform:translate(-50%,150%);z-index:70;
-  display:flex;align-items:center;gap:1px;max-width:min(94vw,780px);
-  background:color-mix(in srgb,var(--elevated) 86%,transparent);
-  -webkit-backdrop-filter:saturate(180%) blur(26px);backdrop-filter:saturate(180%) blur(26px);
-  border:1px solid var(--sep);border-radius:15px;box-shadow:var(--shadow-l);padding:4px;
-  transition:transform .34s var(--ease),opacity .22s ease;opacity:0;overflow-x:auto;scrollbar-width:none}
-.abar::-webkit-scrollbar{display:none}
-.abar.on{transform:translate(-50%,0);opacity:1}
-.abar .sel{font-family:var(--serif);font-size:13px;color:var(--label2);padding:0 11px 0 8px;
-  max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
-.abar .d{width:1px;align-self:stretch;background:var(--sep);margin:5px 3px;flex:none}
-.abar button{padding:9px 13px;border-radius:11px;font-size:13.5px;white-space:nowrap;flex:none;transition:background .1s}
-.abar button:hover{background:var(--fill2)}
-.abar button.pr{background:var(--blue);color:#fff;font-weight:510}
-.abar button.pr:hover{background:var(--blue-press)}
-.tbextra{display:flex;align-items:center;gap:2px}
-.tbextra .sz{width:30px;height:30px;border-radius:var(--r1);display:grid;place-items:center;color:var(--label2);font-weight:590}
-.tbextra .sz:hover{background:var(--fill3);color:var(--label)}
-.sortsel{background:var(--fill3);border:1px solid transparent;border-radius:var(--r1);padding:5px 9px;
-  font-size:12.5px;color:var(--label2);outline:none}
-.sortsel:focus{border-color:var(--blue)}
-.strip{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 14px;scrollbar-width:none}
-.strip::-webkit-scrollbar{display:none}
-.scard{flex:none;width:186px;text-align:left;background:var(--elevated);border:1px solid var(--sep);
-  border-radius:var(--r2);padding:13px;transition:.14s}
-.scard:hover{box-shadow:var(--shadow-m);transform:translateY(-1px)}
-.scard h4{font-size:13.5px;font-weight:530;margin:0 0 6px;line-height:1.35;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.scard .bar{height:3px;border-radius:99px;background:var(--fill1);overflow:hidden}
-.scard .bar i{display:block;height:100%;background:var(--blue)}
-.scard .p{font-size:11.5px;color:var(--label3);margin-top:5px;font-variant-numeric:tabular-nums}
-.readwrap{display:grid;grid-template-columns:minmax(0,32em) 0;justify-content:center;position:relative;padding:0 24px}
-.readwrap.wide{grid-template-columns:minmax(0,32em) 184px;gap:26px}
-.readwrap .doctext{padding:0;max-width:none;margin:0}
-.gutter{position:relative}
-.mnote{position:absolute;width:184px;font-size:12px;line-height:1.45;color:var(--label2);
-  border-left:2px solid var(--hl-yellow);padding:1px 0 1px 9px;cursor:pointer;transition:color .12s}
-.mnote:hover{color:var(--label)}
-.mnote .t{font-size:10.5px;color:var(--label3);display:block;margin-bottom:2px;letter-spacing:.01em}
-.labelrow{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 16px}
+.seg.tight{margin:0}
+.labelrow{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 14px}
 .lchip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:5px 12px;border-radius:99px;
-  background:var(--fill3);border:1px solid transparent;transition:.14s;color:var(--label2)}
+  background:var(--fill3);border:1px solid transparent;color:var(--label2);transition:.14s}
 .lchip:hover{background:var(--fill2)}
 .lchip[aria-current="true"]{border-color:var(--sep-strong);background:var(--elevated);color:var(--label);box-shadow:var(--shadow-s)}
-.lchip i{width:9px;height:9px;border-radius:50%;display:block}
 .lchip .n{font-variant-numeric:tabular-nums;opacity:.5;font-size:11.5px}
-.linput{border:none;background:var(--fill3);border-radius:6px;font-size:12.5px;padding:4px 8px;outline:none;
-  width:130px;border:1px solid transparent}
-.linput:focus{border-color:var(--blue);background:var(--elevated)}
+
+.list{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);overflow:hidden}
+.row,.item{position:relative;width:100%;text-align:left;transition:background .1s}
+.row{display:flex;align-items:center;gap:13px;padding:12px 14px}
+.item{display:block;padding:13px 14px}
+.row+.row::before,.item+.item::before{content:"";position:absolute;left:14px;right:0;top:0;height:1px;background:var(--sep)}
+@media (min-resolution:2dppx){.row+.row::before,.item+.item::before{height:.5px}}
+.row:hover,.item:hover{background:var(--fill3)}
+.row .cover{width:36px;height:47px;border-radius:4px;flex:none;background:linear-gradient(150deg,var(--fill2),var(--fill1));
+  display:grid;place-items:center;font-family:var(--serif);font-size:16px;color:var(--label2);box-shadow:var(--shadow-s)}
+.row .txt{min-width:0;flex:1}
+.row h3,.item h4{font-size:14.5px;font-weight:530;letter-spacing:-.01em;margin:0 0 2px}
+.row h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-size:12.5px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .pct{font-size:12px;color:var(--label3);font-variant-numeric:tabular-nums;flex:none}
+.row .bar{width:42px;height:3px;border-radius:99px;background:var(--fill1);overflow:hidden;flex:none}
+.row .bar i{display:block;height:100%;background:var(--blue)}
+.chev{color:var(--label4);flex:none} .chev svg{width:13px;height:13px}
+.item .b{font-size:13px;color:var(--label2);line-height:1.45;white-space:pre-wrap;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.item .m{font-size:12px;color:var(--label3);margin-top:6px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.empty{border:1px dashed var(--sep-strong);border-radius:var(--r2);padding:24px;color:var(--label3);font-size:13.5px;text-align:center}
+.addcard{margin-top:20px;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:15px}
+.addcard textarea{width:100%;min-height:84px;resize:vertical;background:var(--content);border:1px solid var(--sep-strong);
+  border-radius:var(--r1);padding:10px;font-size:13.5px;line-height:1.55;outline:none}
+.flexrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px}
+
+/* ---------------- reader ---------------- */
+.reader{max-width:none;padding:0 0 44vh}
+.rhead{max-width:var(--rw,40em);margin:14px auto 26px;padding:0 20px}
+.rtools{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.rtools .spacer{flex:1}
+.rhead h1{font-family:var(--serif);font-size:29px;font-weight:600;line-height:1.17;letter-spacing:-.015em;margin:10px 0 8px}
+.rhead .meta{font-size:12.5px;color:var(--label2)}
+.readwrap{display:flex;justify-content:center;gap:22px;position:relative;padding:0 20px}
+.gutter{position:relative;flex:0 0 178px}
+.readwrap:not(.wide) .gutter{display:none}
+.doctext{flex:1 1 auto;min-width:0;font-family:var(--serif);font-size:var(--read,19px);line-height:var(--lh,1.68);
+  letter-spacing:-.003em;max-width:var(--rw,40em);color:var(--reading-ink)}
+.readfont-sans .doctext,.readfont-sans .rhead h1{font-family:var(--ui);letter-spacing:-.012em}
+.readfont-mono .doctext{font-family:var(--mono);font-size:calc(var(--read,19px)*.92)}
+.doctext p{margin:0 0 1.3em;white-space:pre-wrap}
+.doctext ::selection{background:color-mix(in srgb,var(--blue) 26%,transparent)}
+
+/* three roles, three treatments */
+mark.hl{color:inherit;padding:.05em 0;border-radius:2px;cursor:pointer;background:var(--hl-mark);
+  transition:filter .12s;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+mark.hl[data-k="word"]{background:var(--hl-word)}
+mark.hl[data-k="memo"]{background:none;padding:0;border-radius:0;
+  border-bottom:1px solid var(--memo-line);padding-bottom:.5px}
+mark.hl[data-k="memo"]::after{content:attr(data-i);vertical-align:super;font-size:.58em;font-family:var(--ui);
+  font-weight:600;color:var(--memo-line);margin-left:1px}
+mark.hl[data-k="memo"]:hover{background:color-mix(in srgb,var(--memo-line) 14%,transparent)}
+mark.hl:hover{filter:brightness(.96)}
+mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
+.mnote{position:absolute;width:178px;font-size:12px;line-height:1.45;color:var(--label2);
+  border-left:2px solid var(--hl-mark);padding:1px 0 1px 9px;cursor:pointer;transition:color .12s}
+.mnote[data-k="word"]{border-left-color:var(--hl-word)}
+.mnote[data-k="memo"]{border-left-color:var(--memo-line)}
+.mnote:hover{color:var(--label)}
+.mnote .t{font-size:10.5px;color:var(--label3);display:block;margin-bottom:2px}
 
 .callout{position:absolute;z-index:60;display:flex;align-items:stretch;
-  background:color-mix(in srgb,var(--elevated) 82%,transparent);
+  background:color-mix(in srgb,var(--elevated) 84%,transparent);
   -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
   border:1px solid var(--sep);border-radius:var(--r2);box-shadow:var(--shadow-l);overflow:hidden;
   transform:translate(-50%,-100%);transform-origin:50% 100%;animation:callout .18s var(--ease)}
 @keyframes callout{from{opacity:0;transform:translate(-50%,-96%) scale(.94)}}
-.callout button{padding:8px 13px;font-size:13.5px;white-space:nowrap;transition:background .1s}
+.callout button{padding:9px 16px;font-size:13.5px;white-space:nowrap;display:flex;align-items:center;gap:6px}
 .callout button:hover{background:var(--fill3)}
 .callout .d{width:1px;background:var(--sep);flex:none}
+.dot{width:9px;height:9px;border-radius:50%;display:block;flex:none}
+.dot.mark{background:var(--hl-mark);border:1px solid rgba(0,0,0,.12)}
+.dot.word{background:var(--hl-word);border:1px solid rgba(0,0,0,.12)}
+.dot.memo{background:none;border-bottom:2px solid var(--memo-line);border-radius:0;height:6px}
+.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;gap:8px;
+  padding:9px 14px calc(9px + env(safe-area-inset-bottom));
+  background:color-mix(in srgb,var(--elevated) 90%,transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
+  border-top:1px solid var(--sep);box-shadow:0 -6px 24px rgba(0,0,0,.10);animation:barup .24s var(--ease)}
+@keyframes barup{from{transform:translateY(100%)}}
+.actionbar button{flex:1;padding:11px 6px;border-radius:var(--r1);font-size:14px;background:var(--fill3);
+  display:flex;align-items:center;justify-content:center;gap:7px;font-weight:500}
+.actionbar button:active{background:var(--fill2)}
 
+/* ---------------- inspector ---------------- */
 .panel{background:var(--window);border-left:1px solid var(--sep);overflow:auto;padding:0 0 60px}
-.phead{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;height:52px;padding:0 16px;
-  background:color-mix(in srgb,var(--window) 80%,transparent);
+.phead{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;height:50px;padding:0 15px;
+  background:color-mix(in srgb,var(--window) 82%,transparent);
   -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);border-bottom:1px solid var(--sep)}
-.phead h4{font-size:13.5px;font-weight:590;margin:0;letter-spacing:-.008em}
-.pbody{padding:14px 16px}
-.card{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:15px;margin-bottom:11px;animation:rise .22s var(--ease)}
+.phead h4{font-size:13.5px;font-weight:590;margin:0}
+.pbody{padding:13px 15px}
+.card{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:14px;margin-bottom:10px;
+  animation:rise .22s var(--ease)}
 @keyframes rise{from{opacity:0;transform:translateY(5px)}}
-.term{font-family:var(--serif);font-size:26px;font-weight:600;letter-spacing:-.018em;line-height:1.15;margin:0 0 3px}
-.pos{font-size:12.5px;color:var(--label3);margin-bottom:12px}
-.f{margin:11px 0}
+.term{font-family:var(--serif);font-size:25px;font-weight:600;letter-spacing:-.018em;line-height:1.15;margin:0 0 3px}
+.pos{font-size:12.5px;color:var(--label3);margin-bottom:11px}
+.f{margin:10px 0}
 .f .k{font-size:11px;font-weight:590;color:var(--label3);margin-bottom:3px}
 .f .v{font-size:13.5px;line-height:1.5} .f .v.ko{font-size:14.5px;line-height:1.55}
 .quote{border-left:2px solid var(--blue);padding:1px 0 1px 10px;font-family:var(--serif);font-size:14px;line-height:1.55;color:var(--label2)}
-.acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;padding-top:13px;border-top:1px solid var(--sep)}
-.chips{display:flex;gap:7px;margin-top:10px}
-.chip{width:24px;height:24px;border-radius:50%;border:1px solid var(--sep-strong);transition:.14s var(--ease)}
-.chip:hover{transform:scale(1.12)}
-.chip[aria-current="true"]{box-shadow:0 0 0 2px var(--elevated),0 0 0 4px var(--blue)}
+.acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px;padding-top:12px;border-top:1px solid var(--sep)}
 .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
 .tg{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:99px;background:var(--fill2);color:var(--label2)}
 .tg button{color:var(--label3);font-size:13px;line-height:1}
-.tg button:hover{color:#FF3B30}
-.taginput{border:none;background:var(--fill3);border-radius:99px;padding:4px 10px;font-size:12px;width:110px;outline:none}
+.taginput{border:none;background:var(--fill3);border-radius:99px;padding:4px 10px;font-size:12px;width:100px;outline:none}
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:510;padding:2.5px 8px;border-radius:99px;background:var(--fill2);color:var(--label2)}
 .badge.blue{background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue)}
 .badge.due{background:color-mix(in srgb,#FF9500 18%,transparent);color:#C2700A}
 [data-theme="dark"] .badge.due{color:#FF9F0A}
+.badge.mark{background:var(--hl-mark);color:var(--mark-ink)}
+.badge.word{background:var(--hl-word);color:var(--word-ink)}
+.badge.memo{background:color-mix(in srgb,var(--memo-line) 20%,transparent);color:var(--memo-line)}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:13px 0}
+.setrow .k{font-size:13px;color:var(--label2)}
 .spin{width:13px;height:13px;border:2px solid var(--fill1);border-top-color:var(--blue);border-radius:50%;
   animation:sp .65s linear infinite;display:inline-block;vertical-align:-2px;margin-right:7px}
 @keyframes sp{to{transform:rotate(360deg)}}
-.err{border-radius:var(--r2);padding:13px;font-size:13px;line-height:1.5;background:color-mix(in srgb,#FF3B30 9%,transparent);color:#C4271D}
+.err{border-radius:var(--r2);padding:12px;font-size:13px;line-height:1.5;background:color-mix(in srgb,#FF3B30 9%,transparent);color:#C4271D}
 [data-theme="dark"] .err{color:#FF6961}
 
-.item{width:100%;text-align:left;padding:14px 15px;position:relative;transition:background .1s;display:block}
-.item h4{font-size:14.5px;font-weight:530;margin:0 0 3px;letter-spacing:-.008em}
-.item .b{font-size:13px;color:var(--label2);line-height:1.45;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.item .m{font-size:12px;color:var(--label3);margin-top:7px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
-
-.rv{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r3);padding:34px 26px;max-width:520px;text-align:center;box-shadow:var(--shadow-m)}
-.rvterm{font-family:var(--serif);font-size:38px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px;line-height:1.1}
-.qtype{font-size:11px;font-weight:590;color:var(--label3);letter-spacing:.02em;margin-bottom:14px}
+/* ---------------- test ---------------- */
+.rv{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r3);padding:32px 24px;max-width:520px;
+  text-align:center;box-shadow:var(--shadow-m)}
+.rvterm{font-family:var(--serif);font-size:36px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px;line-height:1.1}
+.qtype{font-size:11px;font-weight:590;color:var(--label3);margin-bottom:13px}
 .qsent{font-family:var(--serif);font-size:19px;line-height:1.62;text-align:left;margin:2px 0 18px}
-.opts{display:grid;gap:8px;margin-top:20px}
+.opts{display:grid;gap:8px;margin-top:18px}
 .opt{padding:12px 14px;border-radius:var(--r1);background:var(--fill3);border:1px solid transparent;
   text-align:left;font-size:14.5px;line-height:1.4;transition:.14s}
 .opt:hover:not(:disabled){background:var(--fill2)}
-.opt:disabled{cursor:default}
 .opt.ok{background:color-mix(in srgb,#34C759 16%,transparent);border-color:#34C759}
 .opt.no{background:color-mix(in srgb,#FF3B30 12%,transparent);border-color:#FF3B30}
-.cin{width:100%;text-align:center;font-family:var(--serif);font-size:22px;padding:11px;margin-bottom:14px;
+.cin{width:100%;text-align:center;font-family:var(--serif);font-size:22px;padding:11px;margin-bottom:13px;
   border-radius:var(--r1);border:1px solid var(--sep-strong);background:var(--content);outline:none}
-.cin:focus{border-color:var(--blue);box-shadow:0 0 0 3.5px color-mix(in srgb,var(--blue) 22%,transparent)}
-.pbar{height:3px;background:var(--fill1);border-radius:99px;overflow:hidden;margin:0 0 20px;max-width:520px}
-.pbar i{display:block;height:100%;background:var(--blue);border-radius:99px;transition:width .3s var(--ease)}
-.grade{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:22px}
-.grade button{padding:11px 0;border-radius:var(--r1);background:var(--fill2);font-size:13.5px;font-weight:510;transition:.12s}
-.grade button:hover{background:var(--fill1)} .grade button:active{transform:scale(.97)}
+.pbar{height:3px;background:var(--fill1);border-radius:99px;overflow:hidden;margin:0 0 18px;max-width:520px}
+.pbar i{display:block;height:100%;background:var(--blue);transition:width .3s var(--ease)}
+.grade{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:20px}
+.grade button{padding:11px 0;border-radius:var(--r1);background:var(--fill2);font-size:13.5px;font-weight:510}
+.grade button:hover{background:var(--fill1)}
 .grade small{display:block;font-size:10.5px;color:var(--label3);font-weight:400;margin-top:2px}
-.stats{display:flex;flex-wrap:wrap;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:18px 4px;margin-bottom:26px}
-.stat{flex:1;min-width:84px;text-align:center;padding:0 10px;position:relative}
+.stats{display:flex;flex-wrap:wrap;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:17px 4px;margin-bottom:24px}
+.stat{flex:1;min-width:80px;text-align:center;padding:0 10px;position:relative}
 .stat+.stat::before{content:"";position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--sep)}
-.stat .v{font-size:27px;font-weight:620;letter-spacing:-.022em;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat .v{font-size:26px;font-weight:620;letter-spacing:-.022em;line-height:1.1;font-variant-numeric:tabular-nums}
 .stat .l{font-size:12px;color:var(--label2);margin-top:3px}
-h3.sec{font-size:17px;font-weight:600;letter-spacing:-.015em;margin:26px 0 10px}
-
-.toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,0);z-index:99;
-  background:color-mix(in srgb,var(--elevated) 84%,transparent);
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,0);z-index:99;
+  background:color-mix(in srgb,var(--elevated) 86%,transparent);
   -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
   border:1px solid var(--sep);box-shadow:var(--shadow-l);border-radius:99px;padding:9px 18px;font-size:13px;animation:hud .28s var(--ease)}
 @keyframes hud{from{opacity:0;transform:translate(-50%,10px) scale(.96)}}
 .grabber{display:none}
-.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;gap:2px;overflow-x:auto;
-  padding:8px 12px calc(8px + env(safe-area-inset-bottom));
-  background:color-mix(in srgb,var(--elevated) 88%,transparent);
-  -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
-  border-top:1px solid var(--sep);box-shadow:0 -6px 24px rgba(0,0,0,.10);
-  animation:barup .24s var(--ease)}
-@keyframes barup{from{transform:translateY(100%)}}
-.actionbar button{flex:none;padding:9px 15px;border-radius:var(--r1);font-size:14px;background:var(--fill3);white-space:nowrap}
-.actionbar button:first-child{background:var(--blue);color:#fff;font-weight:510}
-.rtools{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
-.rtools .spacer{flex:1}
-.szbtn{width:30px;height:28px;border-radius:var(--r1);background:var(--fill3);color:var(--label2);
-  display:grid;place-items:center;transition:.12s}
-.szbtn:hover{background:var(--fill2);color:var(--label)}
-.dstat{font-size:12px;color:var(--label3);white-space:nowrap;flex:none}
 
-@media (min-width:1121px){#panelbtn{display:none}}
 @media (max-width:1120px){
-  .app{grid-template-columns:214px minmax(0,1fr)}
-  .panel{position:fixed;inset:auto 0 0 0;max-height:72dvh;border-left:none;border-top:1px solid var(--sep);
-    border-radius:var(--r4) var(--r4) 0 0;z-index:50;box-shadow:var(--shadow-l);
-    transform:translateY(101%);transition:transform .42s var(--ease);background:var(--elevated)}
+  .app{grid-template-columns:206px minmax(0,1fr)}
+  .app.nopanel{grid-template-columns:206px minmax(0,1fr)}
+  .panel{position:fixed;inset:auto 0 0 0;max-height:74dvh;border-left:none;border-top:1px solid var(--sep);
+    border-radius:var(--r4) var(--r4) 0 0;z-index:50;box-shadow:var(--shadow-l);background:var(--elevated);
+    transform:translateY(101%);transition:transform .42s var(--ease)}
   .panel.open{transform:translateY(0)}
-  .phead{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;border-bottom:none;height:auto;padding:4px 16px 10px}
+  .app.nopanel>.panel{display:block}
+  .phead{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;border-bottom:none;height:auto;padding:4px 15px 10px}
   .grabber{display:block;width:36px;height:5px;border-radius:99px;background:var(--fill1);margin:8px auto 2px}
   .card{background:var(--content)}
 }
 @media (max-width:720px){
   .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .app.nopanel{grid-template-columns:1fr}
   .sidebar{flex-direction:row;align-items:center;gap:4px;padding:8px 12px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--sep)}
-  .sidebar .mark,.sidebar .usage,.sidebar .sectitle{display:none}
+  .sidebar .mark,.sidebar .usage{display:none}
   .navbtn{width:auto;padding:6px 11px;white-space:nowrap} .navbtn .n{display:none}
-  .toolbar{padding:0 14px;gap:8px} .field{width:140px} .field:focus-within{width:184px}
-  .view{padding:4px 18px 140px} .largetitle h1{font-size:28px}
-  .rhead{padding:0 20px} .readwrap{padding:0 20px} .rhead h1{font-size:26px}
+  .toolbar{padding:0 14px} .field{width:132px} .field:focus-within{width:176px}
+  .view{padding:4px 16px 140px} .largetitle h1{font-size:27px}
+  .rhead,.readwrap{padding:0 16px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
   <aside class="sidebar">
     <div class="mark"><span class="glyph">M</span><b>MyDrive</b></div>
     <nav id="nav"></nav>
@@ -344,14 +323,12 @@ h3.sec{font-size:17px;font-weight:600;letter-spacing:-.015em;margin:26px 0 10px}
   <main class="main" id="main">
     <div class="toolbar" id="toolbar">
       <span class="tbtitle" id="tbtitle"></span><span class="spacer"></span>
-      <span class="tbextra" id="tbextra"></span>
       <label class="field">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="q" placeholder="Search everything" autocomplete="off" spellcheck="false">
+        <input id="q" placeholder="Search" autocomplete="off" spellcheck="false">
       </label>
-      <button class="iconbtn" id="panelbtn" title="Details panel">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
-          <circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.6v.1"/></svg>
+      <button class="iconbtn" id="panelbtn" title="Details">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></svg>
       </button>
     </div>
     <div id="view"></div>
@@ -360,9 +337,15 @@ h3.sec{font-size:17px;font-weight:600;letter-spacing:-.015em;margin:26px 0 10px}
 </div>
 
 <script>
-/* ============================================================
-   MyDrive — prototype v0.3
-   ============================================================ */
+/* =========================================================================
+   MyDrive — prototype v0.5
+
+   Three things can happen to a piece of text, and they are different in kind:
+     word      an unknown word -> looked up, stored with its paragraph
+     memo      something I thought, doubted, or want to check later
+     highlight this sentence matters -> a personal mark, no database entry
+   Everything in the reader follows from that split.
+   ========================================================================= */
 const uid=p=>p+'_'+Math.random().toString(36).slice(2,9);
 const now=()=>new Date().toISOString();
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -375,9 +358,10 @@ const ICON={
  knowledge:'<path d="M12 3.5c-3.6 0-6.5 2.7-6.5 6 0 2 1 3.4 2 4.4.7.8 1 1.5 1 2.4v.7h7v-.7c0-.9.3-1.6 1-2.4 1-1 2-2.4 2-4.4 0-3.3-2.9-6-6.5-6z"/><path d="M9.5 20.5h5"/>',
  review:'<path d="M3.5 12a8.5 8.5 0 108.5-8.5c-2.6 0-4.9 1.2-6.4 3"/><path d="M3.6 3.9v3.8h3.8"/><path d="M12 7.8V12l2.8 1.8"/>',
  today:'<path d="M4 19V9"/><path d="M9.3 19V5"/><path d="M14.7 19v-7"/><path d="M20 19v-11"/>',
- chev:'<path d="M9 5l7 7-7 7"/>',close:'<path d="M6 6l12 12M18 6L6 18"/>',back:'<path d="M15 5l-7 7 7 7"/>'};
+ chev:'<path d="M9 5l7 7-7 7"/>',close:'<path d="M6 6l12 12M18 6L6 18"/>'};
 const svg=(n,w=1.7)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
 
+/* ---------- storage: sandbox store, then localStorage, then memory ---------- */
 const mem={};
 const store={
  async get(k){
@@ -391,12 +375,14 @@ let wt=null,dirty=new Set();
 function save(...keys){keys.forEach(k=>dirty.add(k));clearTimeout(wt);
  wt=setTimeout(()=>{dirty.forEach(k=>store.set(k,DB[k]));dirty.clear();},300);}
 
-const DB={index:{docs:[]},knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],reviewLogs:[]},
- tcache:{},stats:{apiCalls:0,cacheHits:0},
- prefs:{theme:'auto',colorLabels:{yellow:'Important',green:'Example',blue:'Term',pink:'Disagree',purple:'Quote'}}};
+const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'normal',lh:1.68,panel:true,newPerDay:10};
+const DB={index:{docs:[]},
+ knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],reviewLogs:[]},
+ tcache:{},stats:{apiCalls:0,cacheHits:0},prefs:{...DEFAULT_PREFS}};
 const K=DB.knowledge;
-const COLORS=['yellow','green','blue','pink','purple'];
-const labelFor=c=>(DB.prefs.colorLabels||{})[c||'yellow']||(c||'yellow');
+const DOMAINS=['Major / Career','English / Liberal Arts','World / News / Investment','General Knowledge'];
+const WIDTHS={narrow:'34em',normal:'40em',wide:'48em'};
+const KINDLABEL={mark:'Highlight',word:'Word',memo:'Memo'};
 
 const SEED=[
 {id:'doc_seed_en',title:'Efficiency Constraints in On-Device Vision Models',author:'Sample',language:'en',domain:'Major / Career',content:
@@ -414,60 +400,65 @@ The trade-off is not free. A thin representation carries less information, and a
 
 기록되지 않은 판단은 시간이 지나면 소실된다. 반년 뒤의 나는 그때의 제약 조건을 기억하지 못하고, 결론만 남은 코드를 보며 왜 이렇게 했는지 되묻게 된다. 판단의 근거를 남기는 일은 문서화가 아니라 미래의 의사결정 비용을 낮추는 투자다.`}];
 
-let state={view:'library',docId:null,panel:null,tab:'concepts',wordFilter:'all',colorFilter:'all',
- query:'',revealed:false,testing:false,testQueue:[]};
+let state={view:'library',docId:null,panel:null,tab:'concepts',wordFilter:'all',hlFilter:'all',
+ domain:'all',sort:'recent',query:'',revealed:false,testing:false,testQueue:[],
+ qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
+
+const $=id=>document.getElementById(id);
+const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
+      $toolbar=$('toolbar'),$usage=$('usage'),$main=$('main'),$app=$('app');
 
 (async function boot(){
- const [ix,kn,tc,st,pf]=await Promise.all([store.get('pkos:index'),store.get('pkos:knowledge'),
-  store.get('pkos:tcache'),store.get('pkos:stats'),store.get('pkos:prefs')]);
- if(kn)Object.assign(DB.knowledge,kn);
+ const [ix,kn,tc,st,pf]=await Promise.all(['pkos:index','pkos:knowledge','pkos:tcache','pkos:stats','pkos:prefs'].map(store.get));
+ if(kn)Object.assign(K,kn);
  if(tc)DB.tcache=tc; if(st)DB.stats=st;
- if(pf)DB.prefs={...DB.prefs,...pf,colorLabels:{...DB.prefs.colorLabels,...(pf.colorLabels||{})}};
+ if(pf)DB.prefs={...DEFAULT_PREFS,...pf};
  if(!K.reviewLogs)K.reviewLogs=[];
- K.vocabulary.forEach(v=>{                       // migrate entries saved before scheduling existed
+ K.highlights.forEach(h=>{                         // migrate colour-era highlights
+  if(!h.tags)h.tags=[];
+  if(!h.kind)h.kind=K.vocabulary.some(v=>v.sourceHighlightId===h.id)?'word':'mark';});
+ K.vocabulary.forEach(v=>{
   if(!v.tags)v.tags=[];
   if(v.ease==null)v.ease=2.5; if(v.reps==null)v.reps=0;
-  if(v.lapses==null)v.lapses=0; if(v.stage==null)v.stage=0;
-  if(v.interval==null)v.interval=0;});
- K.highlights.forEach(h=>{if(!h.tags)h.tags=[];});
- document.documentElement.dataset.theme=DB.prefs.theme||'auto';
- if(ix&&ix.docs?.length){DB.index=ix;}
+  if(v.lapses==null)v.lapses=0; if(v.stage==null)v.stage=0; if(v.interval==null)v.interval=0;});
+ applyPrefs();
+ if(ix&&ix.docs?.length)DB.index=ix;
  else{
   DB.index.docs=SEED.map(d=>({id:d.id,title:d.title,author:d.author,language:d.language,domain:d.domain,
    chars:d.content.length,progress:0,createdAt:now(),lastReadAt:null}));
-  for(const d of SEED) await store.set('pkos:doc:'+d.id,{id:d.id,content:d.content});
+  for(const d of SEED)await store.set('pkos:doc:'+d.id,{id:d.id,content:d.content});
   await store.set('pkos:index',DB.index);
  }
+ try{history.replaceState({view:'library',docId:null},'');}catch(e){}
  render();
 })();
 
-/* ---------------------------------------------------------------------
-   Language service client.
+function applyPrefs(){
+ const p=DB.prefs;
+ document.documentElement.dataset.theme=p.theme||'auto';
+ document.body.style.setProperty('--read',(p.read||19)+'px');
+ document.body.style.setProperty('--rw',WIDTHS[p.width]||WIDTHS.normal);
+ document.body.style.setProperty('--lh',p.lh||1.68);
+ document.body.className=document.body.className.replace(/readfont-\w+/g,'').trim();
+ if(p.font!=='serif')document.body.classList.add('readfont-'+p.font);
+ $app.classList.toggle('nopanel',p.panel===false);
+ $('panelbtn').setAttribute('aria-current',p.panel!==false);
+}
 
-   The browser holds no API key. It posts a mode and the selected text to
-   /api/lookup, which owns the prompts and the vendor call. Adding a mode
-   means adding it in api/lookup.js and wiring one button here.
-
-   Inside the Claude preview sandbox there is no /api route, so the call
-   falls back to the sandbox endpoint. That path is preview-only; the
-   deployed site always uses the server function.
-   --------------------------------------------------------------------- */
+/* ---------- language service ---------- */
 const hash=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return 'h'+(h>>>0).toString(36);};
-let API_MODE=null;   // null = unknown, 'server' = /api/lookup, 'sandbox' = Claude preview
-
+let API_MODE=null;
 async function llm(mode,text,sentence,lang,key){
  if(key&&DB.tcache[key]){DB.stats.cacheHits++;save('pkos:stats');paintUsage();return{data:DB.tcache[key],cached:true};}
  let data=null;
  if(API_MODE!=='sandbox'){
   let r=null;
-  try{
-   r=await fetch('/api/lookup',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({mode,text,sentence,lang})});
-  }catch(e){r=null;}
+  try{r=await fetch('/api/lookup',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({mode,text,sentence,lang})});}catch(e){r=null;}
   if(r&&r.ok){API_MODE='server';data=await r.json();}
   else if(r&&(r.status===404||r.status===405)){API_MODE='sandbox';}
   else if(r){const j=await r.json().catch(()=>({}));throw new Error(j.error||('server returned '+r.status));}
-  else if(API_MODE==='server'){throw new Error('Could not reach /api/lookup (network)');}
+  else if(API_MODE==='server'){throw new Error('Could not reach /api/lookup');}
   else{API_MODE='sandbox';}
  }
  if(!data)data=await sandboxLLM(mode,text,sentence,lang);
@@ -476,37 +467,34 @@ async function llm(mode,text,sentence,lang,key){
   if(ks.length>200)ks.slice(0,ks.length-200).forEach(k=>delete DB.tcache[k]);save('pkos:tcache');}
  save('pkos:stats');paintUsage();return{data,cached:false};
 }
-
-/* preview-only path — mirrors the prompts in api/lookup.js */
-const SANDBOX_SYS='You are a bilingual English–Korean reading assistant inside a personal knowledge app for a Korean engineering student. Write meanings and explanations in Korean unless told otherwise. Be precise and concise. Output raw JSON only.';
-const SANDBOX_P={
- term:(t,s,l)=>`TASK: term lookup\nSELECTED: ${JSON.stringify(t)}\nSENTENCE: ${JSON.stringify(s)}\nSOURCE_LANGUAGE: ${l}\n\nJSON: {"term":str,"lang":str,"pos":str,"pron":str,"contextual":str,"general":str,"en":str,"hanja":str,"sentence_ko":str,"example":str,"example_ko":str,"concept":str,"tags":[str]}\ncontextual/general/sentence_ko 는 한국어. tags 는 영어 소문자 1~3개.`,
- passage:(t,s,l)=>`TASK: passage translation\nSELECTED: ${JSON.stringify(t)}\nSOURCE_LANGUAGE: ${l}\n\nJSON: {"translation":str,"gist":str,"terms":[{"term":str,"meaning":str}]}\ntranslation 은 자연스러운 한국어 의역.`,
- explain:(t,s)=>`TASK: simple explanation\nSELECTED: ${JSON.stringify(t)}\nSENTENCE: ${JSON.stringify(s)}\n\nJSON: {"explanation":str,"analogy":str}\n쉽게 2~3문장, 한국어.`,
- deep:(t,s)=>`TASK: in-depth explanation\nSELECTED: ${JSON.stringify(t)}\nSENTENCE: ${JSON.stringify(s)}\n\nJSON: {"explanation":str,"analogy":str}\n원리와 이유까지 3~5문장, 한국어.`};
-
+/* preview-only path; the deployed site always goes through /api/lookup */
+const SB_SYS='You are a bilingual English-Korean reading assistant. Write meanings in Korean. Output raw JSON only.';
+const SB_P={
+ term:(t,s,l)=>`TASK: term lookup\nSELECTED: ${JSON.stringify(t)}\nSENTENCE: ${JSON.stringify(s)}\nLANG: ${l}\nJSON: {"term":str,"lang":str,"pos":str,"pron":str,"contextual":str,"general":str,"en":str,"hanja":str,"sentence_ko":str,"example":str,"example_ko":str,"concept":str,"tags":[str]}`,
+ passage:(t,s,l)=>`TASK: passage translation\nSELECTED: ${JSON.stringify(t)}\nLANG: ${l}\nJSON: {"translation":str,"gist":str,"terms":[{"term":str,"meaning":str}]}`,
+ explain:(t,s)=>`TASK: simple explanation\nSELECTED: ${JSON.stringify(t)}\nSENTENCE: ${JSON.stringify(s)}\nJSON: {"explanation":str,"analogy":str}`,
+ deep:(t,s)=>`TASK: deep explanation\nSELECTED: ${JSON.stringify(t)}\nSENTENCE: ${JSON.stringify(s)}\nJSON: {"explanation":str,"analogy":str}`};
 async function sandboxLLM(mode,text,sentence,lang){
  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system:SANDBOX_SYS,
-   messages:[{role:'user',content:SANDBOX_P[mode](text,sentence,lang)}]})});
+  body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system:SB_SYS,
+   messages:[{role:'user',content:SB_P[mode](text,sentence,lang)}]})});
  if(!res.ok)throw new Error('HTTP '+res.status);
  const j=await res.json();
  const txt=(j.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').replace(/```json|```/g,'').trim();
  try{return JSON.parse(txt);}catch(e){throw new Error('Unreadable response');}
 }
 
+/* ---------- helpers ---------- */
 const docCache={};
 async function loadDoc(id){if(docCache[id])return docCache[id];const d=await store.get('pkos:doc:'+id);docCache[id]=d;return d;}
 const meta=id=>DB.index.docs.find(d=>d.id===id);
 function sentenceAt(t,s,e){let a=s,b=e;const stop='.!?。\n';
  while(a>0&&!stop.includes(t[a-1]))a--;while(b<t.length&&!stop.includes(t[b]))b++;
  return t.slice(a,Math.min(b+1,t.length)).trim();}
+function paragraphAt(t,s,e){let a=t.lastIndexOf('\n',s);a=a<0?0:a+1;
+ let b=t.indexOf('\n',e);if(b<0)b=t.length;return t.slice(a,b).trim();}
 const dueWords=()=>K.vocabulary.filter(v=>!v.suspended&&(!v.nextReviewAt||v.nextReviewAt<=now()));
 const dueConcepts=()=>K.concepts.filter(c=>!c.nextReviewAt||c.nextReviewAt<=now());
-
-const $view=document.getElementById('view'),$panel=document.getElementById('panel'),$nav=document.getElementById('nav'),
- $tb=document.getElementById('tbtitle'),$toolbar=document.getElementById('toolbar'),$usage=document.getElementById('usage'),
- $main=document.getElementById('main');
 
 function paintNav(){
  const items=[['library','Library','library',DB.index.docs.length],
@@ -517,9 +505,8 @@ function paintNav(){
   ${svg(ic)}<span>${l}</span>${n===''?'':`<span class="n">${n}</span>`}</button>`).join('');
 }
 function paintUsage(){
- const s=DB.stats;
- $usage.innerHTML=`<div class="u"><span>API calls</span><b>${s.apiCalls}</b></div>
-  <div class="u"><span>Cached</span><b>${s.cacheHits}</b></div>
+ $usage.innerHTML=`<div class="u"><span>API calls</span><b>${DB.stats.apiCalls}</b></div>
+  <div class="u"><span>Cached</span><b>${DB.stats.cacheHits}</b></div>
   <div class="themetog">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([k,l])=>
    `<button data-settheme="${k}" aria-current="${(DB.prefs.theme||'auto')===k}">${l}</button>`).join('')}</div>`;
 }
@@ -534,28 +521,41 @@ function render(){
  else if(state.view==='today')viewToday();
  paintPanel();
 }
+function go(view,opts={}){
+ state.view=view;
+ if(opts.docId!==undefined)state.docId=opts.docId;
+ state.panel=null;state.revealed=false;state.testing=false;state.query='';
+ if($('q'))$('q').value='';
+ $main.scrollTop=0;
+ try{history.pushState({view,docId:state.docId},'');}catch(e){}
+ render();
+}
+window.addEventListener('popstate',e=>{
+ const st=e.state||{view:'library'};
+ state.view=st.view||'library';state.docId=st.docId||null;
+ state.panel=null;state.testing=false;state.query='';
+ if($('q'))$('q').value='';
+ render();
+});
 $main.addEventListener('scroll',()=>{
- $toolbar.classList.toggle('scrolled',$main.scrollTop>28);
+ $toolbar.classList.toggle('scrolled',$main.scrollTop>26);
  if(state.view==='reader'){const m=meta(state.docId);if(!m)return;
   const p=Math.min(1,$main.scrollTop/Math.max(1,$main.scrollHeight-$main.clientHeight));
   if(Math.abs(p-m.progress)>.02){m.progress=p;m.lastReadAt=now();save('pkos:index');}}
 });
 
-/* ---------- Library ----------
-   A flat pile sorted by upload time tells you nothing. What matters when you
-   open this screen is: what am I in the middle of, what have I not started,
-   and what did each document actually give me. So documents are grouped by
-   reading state, and every row carries the count of highlights and words it
-   produced — that is the reason to keep a document rather than its filename.
-   -------------------------------------------------------------------------- */
-const DOMAINS=['Major / Career','English / Liberal Arts','World / News / Investment','General Knowledge'];
-const docStat=d=>({h:K.highlights.filter(x=>x.documentId===d.id&&!x.orphaned).length,
-                   w:K.vocabulary.filter(x=>x.sourceDocumentId===d.id).length});
+/* ---------- Library ---------- */
+const docStat=d=>({
+ m:K.highlights.filter(x=>x.documentId===d.id&&!x.orphaned&&x.kind==='mark').length,
+ w:K.vocabulary.filter(x=>x.sourceDocumentId===d.id).length,
+ n:K.highlights.filter(x=>x.documentId===d.id&&!x.orphaned&&x.kind==='memo').length});
 function docRow(d){
  const st=docStat(d),pct=Math.round(d.progress*100);
- const bits=[esc(d.author||'Unknown'),d.language==='ko'?'Korean':'English'];
- if(st.h)bits.push(st.h+' highlights');
+ const bits=[esc(d.author||'Unknown')];
  if(st.w)bits.push(st.w+' words');
+ if(st.m)bits.push(st.m+' highlights');
+ if(st.n)bits.push(st.n+' memos');
+ if(bits.length===1)bits.push(d.language==='ko'?'Korean':'English');
  return `<button class="row" data-open="${d.id}">
   <span class="cover">${esc(d.title.trim()[0]||'·')}</span>
   <span class="txt"><h3>${esc(d.title)}</h3><span class="meta">${bits.join(' · ')}</span></span>
@@ -564,33 +564,27 @@ function docRow(d){
 }
 function viewLibrary(){
  $tb.textContent='Library';
- const dom=state.domain||'all',sort=state.sort||'recent';
- let docs=DB.index.docs.filter(d=>dom==='all'||d.domain===dom);
- const recency=d=>String(d.lastReadAt||d.createdAt||'');
- docs=[...docs].sort(sort==='title'?(a,b)=>a.title.localeCompare(b.title)
-   :sort==='progress'?(a,b)=>b.progress-a.progress
-   :(a,b)=>recency(b).localeCompare(recency(a)));
-
+ let docs=DB.index.docs.filter(d=>state.domain==='all'||d.domain===state.domain);
+ const rec=d=>String(d.lastReadAt||d.createdAt||'');
+ docs=[...docs].sort(state.sort==='title'?(a,b)=>a.title.localeCompare(b.title)
+  :state.sort==='progress'?(a,b)=>b.progress-a.progress
+  :(a,b)=>rec(b).localeCompare(rec(a)));
  const g={reading:[],unread:[],done:[]};
  docs.forEach(d=>g[d.progress>=.97?'done':d.progress>.02?'reading':'unread'].push(d));
- const section=(key,label,list)=>list.length
-  ?`<h3 class="sec">${label}<span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${list.length}</span></h3>
-    <div class="list">${list.map(docRow).join('')}</div>`:'';
-
+ const sec=(label,list)=>list.length?`<h3 class="sec">${label}
+   <span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${list.length}</span></h3>
+   <div class="list">${list.map(docRow).join('')}</div>`:'';
  const counts=DB.index.docs.reduce((m,d)=>{m[d.domain]=(m[d.domain]||0)+1;return m;},{});
  $view.innerHTML=`<div class="view">
   <div class="largetitle"><h1>Library</h1><span class="c">${DB.index.docs.length}</span></div>
   <div class="labelrow">
-   <button class="lchip" data-dom="all" aria-current="${dom==='all'}">All<span class="n">${DB.index.docs.length}</span></button>
-   ${DOMAINS.map(x=>`<button class="lchip" data-dom="${esc(x)}" aria-current="${dom===x}">${esc(x.split(' / ')[0])}
-     <span class="n">${counts[x]||0}</span></button>`).join('')}</div>
+   <button class="lchip" data-dom="all" aria-current="${state.domain==='all'}">All<span class="n">${DB.index.docs.length}</span></button>
+   ${DOMAINS.map(x=>`<button class="lchip" data-dom="${esc(x)}" aria-current="${state.domain===x}">${esc(x.split(' / ')[0])}<span class="n">${counts[x]||0}</span></button>`).join('')}</div>
   <div class="seg">${[['recent','Recent'],['title','Title'],['progress','Progress']]
-    .map(([k,l])=>`<button data-sort="${k}" aria-current="${sort===k}">${l}</button>`).join('')}</div>
-  ${DB.index.docs.length===0?'<div class="empty">No documents yet</div>':''}
-  ${section('reading','Reading now',g.reading)}
-  ${section('unread','Not started',g.unread)}
-  ${section('done','Finished',g.done)}
-  ${docs.length===0&&DB.index.docs.length?'<div class="empty">Nothing in this category</div>':''}
+   .map(([k,l])=>`<button data-sort="${k}" aria-current="${state.sort===k}">${l}</button>`).join('')}</div>
+  ${DB.index.docs.length?'':'<div class="empty">No documents yet</div>'}
+  ${sec('Reading now',g.reading)}${sec('Not started',g.unread)}${sec('Finished',g.done)}
+  ${DB.index.docs.length&&!docs.length?'<div class="empty">Nothing in this category</div>':''}
   <div class="addcard">
    <div class="flexrow" style="margin:0 0 11px;justify-content:space-between">
     <strong style="font-size:14.5px;font-weight:590">Add document</strong>
@@ -601,8 +595,7 @@ function viewLibrary(){
     <input class="tin" id="ntitle" placeholder="Title" style="flex:1.4">
     <input class="tin" id="nauthor" placeholder="Author or source" style="flex:1">
     <select class="tin" id="ndomain">${DOMAINS.map(x=>`<option>${x}</option>`).join('')}</select>
-    <button class="btn" id="addbtn">Add</button></div>
-  </div></div>`;
+    <button class="btn" id="addbtn">Add</button></div></div></div>`;
 }
 async function addDoc(title,author,content,domain){
  if(!content.trim())return toast('Nothing to add');
@@ -612,11 +605,10 @@ async function addDoc(title,author,content,domain){
  await store.set('pkos:doc:'+id,{id,content});docCache[id]={id,content};save('pkos:index');
  go('reader',{docId:id});toast('Document added');
 }
-
-/* Editing the source text moves every offset after the edit point, so each
-   highlight is re-found by its own text near where it used to be. Anything
-   that genuinely disappeared is kept and flagged rather than silently lost. */
-function reanchor(docId,oldText,newText){
+/* Editing source text shifts every offset after the edit, so each highlight
+   re-finds its own text near where it used to sit. Anything that truly
+   vanished is flagged rather than deleted. */
+function reanchor(docId,newText){
  let moved=0,lost=0;
  K.highlights.filter(h=>h.documentId===docId).forEach(h=>{
   if(newText.slice(h.start,h.end)===h.selectedText){h.orphaned=false;return;}
@@ -624,16 +616,18 @@ function reanchor(docId,oldText,newText){
   if(i<0)i=newText.indexOf(h.selectedText);
   if(i<0){h.orphaned=true;lost++;return;}
   h.start=i;h.end=i+h.selectedText.length;
-  h.position={type:'text-offset',start:h.start,end:h.end};h.orphaned=false;moved++;
- });
+  h.position={type:'text-offset',start:h.start,end:h.end};h.orphaned=false;moved++;});
  return{moved,lost};
 }
 
 /* ---------- Reader ---------- */
+let lastReaderDoc=null;
 async function viewReader(){
  const m=meta(state.docId);if(!m){state.view='library';return render();}
  const d=await loadDoc(state.docId);$tb.textContent=m.title;
  const hls=K.highlights.filter(h=>h.documentId===m.id&&!h.orphaned).sort((a,b)=>a.start-b.start);
+ let memoN=0;const memoIdx={};
+ hls.forEach(h=>{if(h.kind==='memo')memoIdx[h.id]=++memoN;});
  let pos=0;
  const html=d.content.split('\n').map(line=>{
   const b={start:pos,text:line};pos+=line.length+1;
@@ -643,233 +637,216 @@ async function viewReader(){
   let out='',cur=b.start;
   inside.forEach(h=>{const s=Math.max(h.start,b.start),e=Math.min(h.end,end);
    if(s>cur)out+=esc(b.text.slice(cur-b.start,s-b.start));
-   out+=`<mark class="hl" data-c="${h.color||'yellow'}" data-hl="${h.id}">${esc(b.text.slice(s-b.start,e-b.start))}</mark>`;cur=e;});
+   out+=`<mark class="hl" data-k="${h.kind||'mark'}" data-hl="${h.id}"${
+    h.kind==='memo'?` data-i="${memoIdx[h.id]}"`:''}>${esc(b.text.slice(s-b.start,e-b.start))}</mark>`;cur=e;});
   if(cur<end)out+=esc(b.text.slice(cur-b.start));
   return `<p data-start="${b.start}">${out}</p>`;}).join('');
  const known=K.vocabulary.filter(v=>d.content.toLowerCase().includes(String(v.word).toLowerCase())).length;
+ const st=docStat(m);
  $view.innerHTML=`<div class="view reader">
   <div class="rhead">
    <div class="rtools">
     <button class="btn plain sm" data-nav="library" style="margin-left:-8px">← Library</button>
     <span class="spacer"></span>
-    <span class="dstat">${DB.prefs.readSize||19}px</span>
-    <button class="szbtn" data-size="-" title="Smaller" style="font-size:12px">A</button>
-    <button class="szbtn" data-size="+" title="Larger" style="font-size:16px">A</button>
-    <button class="btn sec sm" data-editdoc="${m.id}">Edit</button>
-   </div>
+    <button class="btn sec sm" data-readset>Aa</button>
+    <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div>
    <h1>${esc(m.title)}</h1>
-   <div class="meta">${esc(m.author||'Unknown')} · ${hls.length} highlights${known?` · ${known} saved words here`:''}${m.progress>.01?` · ${Math.round(m.progress*100)}% read`:''}</div>
+   <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}</div>
   </div>
-  <div class="readwrap" id="readwrap"><div class="doctext" id="docbody" style="font-size:${DB.prefs.readSize||19}px">${html}</div>
+  <div class="readwrap" id="readwrap"><div class="doctext" id="docbody">${html}</div>
    <div class="gutter" id="gutter"></div></div></div>`;
  requestAnimationFrame(renderMargins);
- if(lastReaderDoc!==m.id){                 // opening a document, not redrawing it
+ if(lastReaderDoc!==m.id){
   lastReaderDoc=m.id;
   if(m.progress>.02)requestAnimationFrame(()=>{
    $main.scrollTop=m.progress*($main.scrollHeight-$main.clientHeight);
    renderMargins();toast(`Resumed at ${Math.round(m.progress*100)}%`);});
  }
 }
-let lastReaderDoc=null;
-
-/* margin notes — a highlight with a note, translation or saved word shows in the gutter */
 function renderMargins(){
- const wrap=document.getElementById('readwrap'),g=document.getElementById('gutter');
- if(!wrap||!g)return;
- const wide=$main.clientWidth>=800;
+ const wrap=$('readwrap'),g=$('gutter');if(!wrap||!g)return;
+ const wide=$main.clientWidth>=860;
  wrap.classList.toggle('wide',wide);
- g.innerHTML='';
- if(!wide)return;
+ g.innerHTML='';if(!wide)return;
  const gr=g.getBoundingClientRect();let last=-1e5;
- K.highlights.filter(h=>h.documentId===state.docId).sort((a,b)=>a.start-b.start).forEach(h=>{
-  const linked=K.vocabulary.find(v=>v.sourceHighlightId===h.id);
-  const note=h.note||h.translation||linked?.contextualMeaning||'';
+ K.highlights.filter(h=>h.documentId===state.docId&&!h.orphaned).sort((a,b)=>a.start-b.start).forEach(h=>{
+  const linked=[...K.thoughts,...K.questions].find(o=>o.sourceHighlightId===h.id)
+            ||K.vocabulary.find(v=>v.sourceHighlightId===h.id);
+  const note=h.note||h.translation||linked?.body||linked?.contextualMeaning||'';
   if(!note)return;
   const el=document.querySelector(`mark[data-hl="${h.id}"]`);if(!el)return;
   const top=Math.max(el.getBoundingClientRect().top-gr.top,last+12);
   const n=document.createElement('div');
-  n.className='mnote';n.dataset.hl=h.id;n.style.top=top+'px';
-  n.style.borderLeftColor=`var(--hl-${h.color||'yellow'})`;
-  n.innerHTML=`<span class="t">${esc(labelFor(h.color))}</span>${esc(String(note).slice(0,160))}`;
-  g.appendChild(n);last=top+n.offsetHeight;
- });
+  n.className='mnote';n.dataset.hl=h.id;n.dataset.k=h.kind||'mark';n.style.top=top+'px';
+  n.innerHTML=`<span class="t">${KINDLABEL[h.kind||'mark']}</span>${esc(String(note).slice(0,160))}`;
+  g.appendChild(n);last=top+n.offsetHeight;});
 }
 let rz=null;
 window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{if(state.view==='reader')renderMargins();},160);});
+
 function offsetOf(node,off){
- const el=node.nodeType===3?node.parentElement:node,p=el.closest('[data-start]');if(!p)return null;
+ const el=node.nodeType===3?node.parentElement:node,p=el?.closest('[data-start]');if(!p)return null;
  let acc=0;const w=document.createTreeWalker(p,NodeFilter.SHOW_TEXT);let n;
  while((n=w.nextNode())){if(n===node)return +p.dataset.start+acc+off;acc+=n.nodeValue.length;}
- return +p.dataset.start+acc;}
-let $co=null;const killCo=()=>{if($co){$co.remove();$co=null;}};
-/* The menu should appear the moment a selection exists, on every device.
-   selectionchange is the only event that fires reliably on iOS after the
-   native handles settle, so it drives this; mouseup/touchend are kept as a
-   fast path for pointer devices. A collapsed selection is ignored here —
-   dismissal is handled by the click listener, otherwise tapping a button in
-   the menu would destroy the menu before the tap registers. */
-let selT=null;
-const scheduleSel=()=>{clearTimeout(selT);selT=setTimeout(onSel,160);};
+ return +p.dataset.start+acc;
+}
+let $co=null,selT=null;
+const killCo=()=>{if($co){$co.remove();$co=null;}};
+const scheduleSel=()=>{clearTimeout(selT);selT=setTimeout(onSel,150);};
+/* selectionchange is the one event that fires reliably on iOS once the native
+   handles settle, so the menu appears on its own rather than on a second tap. */
 document.addEventListener('selectionchange',scheduleSel);
 document.addEventListener('mouseup',scheduleSel);
 document.addEventListener('touchend',scheduleSel);
 function onSel(){
  if(state.view!=='reader')return;
  const sel=window.getSelection();
- if(!sel||!sel.rangeCount)return;
- if(sel.isCollapsed)return;               // leave an open menu alone
- const r=sel.getRangeAt(0),body=document.getElementById('docbody');
+ if(!sel||!sel.rangeCount||sel.isCollapsed)return;   // dismissal is the click handler's job
+ const r=sel.getRangeAt(0),body=$('docbody');
  if(!body||!body.contains(r.commonAncestorContainer))return;
  const text=sel.toString().trim();if(!text)return;
  const s=offsetOf(r.startContainer,r.startOffset),e=offsetOf(r.endContainer,r.endOffset);
  if(s==null||e==null)return;
- if($co&&$co.dataset.sig===text+'|'+s)return;   // same selection, menu already up
- showCallout(r.getBoundingClientRect(),{text,start:Math.min(s,e),end:Math.max(s,e)});
+ const info={text,start:Math.min(s,e),end:Math.max(s,e)};
+ if($co&&$co.dataset.sig===text+'|'+info.start)return;
+ showCallout(r.getBoundingClientRect(),info);
 }
 function showCallout(rect,sel){
  killCo();
- const isTerm=isKo(sel.text)?sel.text.length<=12:sel.text.split(/\s+/).length<=4;
- const b=[['Save','save'],[isTerm?'Define':'Translate','lookup'],['Explain','explain'],
-  ['Mark','hl'],['Thought','thought'],['Question','question']];
- const narrow=window.innerWidth<=820;
- $co=document.createElement('div');
- $co.dataset.sig=sel.text+'|'+sel.start;
-
+ const isTerm=isKo(sel.text)?sel.text.length<=14:sel.text.split(/\s+/).length<=4;
+ const b=[[isTerm?'Word':'Translate','word','word'],['Memo','memo','memo'],['Highlight','mark','mark']];
+ $co=document.createElement('div');$co.dataset.sig=sel.text+'|'+sel.start;
+ const narrow=window.innerWidth<=860;
+ const btn=([l,a,k])=>`<button data-act="${a}"><span class="dot ${k}"></span>${l}</button>`;
  if(narrow){
-  // A floating bubble covers the text it refers to on a small screen.
-  $co.className='actionbar';
-  $co.innerHTML=b.map(([l,a])=>`<button data-act="${a}">${l}</button>`).join('');
+  $co.className='actionbar';$co.innerHTML=b.map(btn).join('');
   document.body.appendChild($co);
  }else{
   $co.className='callout';
-  $co.innerHTML=b.map(([l,a],i)=>`${i?'<span class="d"></span>':''}<button data-act="${a}">${l}</button>`).join('');
+  $co.innerHTML=b.map((x,i)=>`${i?'<span class="d"></span>':''}${btn(x)}`).join('');
   const box=$main.getBoundingClientRect();
-  $co.style.left=Math.min(Math.max(rect.left+rect.width/2-box.left+$main.scrollLeft,160),$main.clientWidth-160)+'px';
+  $co.style.left=Math.min(Math.max(rect.left+rect.width/2-box.left+$main.scrollLeft,150),$main.clientWidth-150)+'px';
   $co.style.top=(rect.top-box.top+$main.scrollTop-8)+'px';
   $main.appendChild($co);
  }
  $co.onclick=ev=>{const a=ev.target.closest('[data-act]');if(!a)return;
   act(a.dataset.act,sel,isTerm);killCo();window.getSelection()?.removeAllRanges();};
 }
+function addHL(ctx,kind){
+ const dup=K.highlights.find(h=>h.documentId===ctx.documentId&&h.start===ctx.start&&h.end===ctx.end);
+ if(dup){dup.kind=kind;return dup;}
+ const h={id:uid('hl'),documentId:ctx.documentId,kind,selectedText:ctx.text,
+  start:ctx.start,end:ctx.end,position:{type:'text-offset',start:ctx.start,end:ctx.end},
+  sentence:ctx.sentence,paragraph:ctx.paragraph,note:'',tags:[],createdAt:now(),updatedAt:now()};
+ K.highlights.push(h);save('pkos:knowledge');return h;
+}
 async function act(kind,sel,isTerm){
  const d=await loadDoc(state.docId);
- const ctx={...sel,sentence:sentenceAt(d.content,sel.start,sel.end),lang:isKo(sel.text)?'ko':'en',documentId:state.docId};
- if(kind==='hl')return addHighlight(ctx);
- if(kind==='thought'||kind==='question'){state.panel={type:'compose',kind,ctx};return paintPanel();}
+ const ctx={...sel,sentence:sentenceAt(d.content,sel.start,sel.end),
+  paragraph:paragraphAt(d.content,sel.start,sel.end),
+  lang:isKo(sel.text)?'ko':'en',documentId:state.docId};
 
- /* one action: highlight + look up + store. Words go to the Words DB with their
-    contextual meaning; sentences keep a natural Korean rendering as a margin note. */
- if(kind==='save'){
-  const h=addHighlight(ctx,isTerm?'blue':'yellow');
-  const mode=isTerm?'term':'passage';
-  const key=hash(mode+'|'+sel.text+'|'+(isTerm?ctx.sentence:''));
-  state.panel={type:'result',mode,ctx,loading:true};paintPanel();
-  try{
-   const{data}=await llm(mode,sel.text,ctx.sentence,ctx.lang,key);
-   if(isTerm){
-    const v=makeVocab(data,ctx,h);
-    h.note=data.contextual||data.general||'';h.updatedAt=now();
-    save('pkos:knowledge');state.panel={type:'detail',kind:'vocabulary',item:v};
-    render();toast('Saved to Words');
-   }else{
-    h.translation=data.translation||'';h.note=data.translation||'';h.gist=data.gist||'';h.updatedAt=now();
-    save('pkos:knowledge');state.panel={type:'hl',item:h};
-    render();toast('Saved with translation');
-   }
-  }catch(e){state.panel={type:'result',mode,ctx,error:e.message};paintPanel();}
-  return;
- }
- const mode=kind==='lookup'?(isTerm?'term':'passage'):kind;
- const key=hash(mode+'|'+sel.text+'|'+(mode==='passage'?'':ctx.sentence));
+ if(kind==='mark'){addHL(ctx,'mark');await viewReader();return toast('Highlighted');}
+ if(kind==='memo'){
+  const h=addHL(ctx,'memo');await viewReader();
+  state.panel={type:'memo',ctx,hl:h,memoKind:'thought'};return paintPanel();}
+
+ /* word: highlight, look up, and file it away in one action */
+ const h=addHL(ctx,'word');
+ const mode=isTerm?'term':'passage';
+ const key=hash(mode+'|'+sel.text+'|'+(isTerm?ctx.sentence:''));
  state.panel={type:'result',mode,ctx,loading:true};paintPanel();
  try{
-  const{data,cached}=await llm(mode,sel.text,ctx.sentence,ctx.lang,key);
-  state.panel={type:'result',mode,ctx,data,cached};
- }catch(e){state.panel={type:'result',mode,ctx,error:e.message};}
- paintPanel();
+  const{data}=await llm(mode,sel.text,ctx.sentence,ctx.lang,key);
+  if(isTerm){
+   const v=makeVocab(data,ctx,h);
+   h.note=data.contextual||data.general||'';h.updatedAt=now();
+   save('pkos:knowledge');state.panel={type:'detail',kind:'vocabulary',item:v};
+   render();toast('Saved to Words');
+  }else{
+   h.translation=data.translation||'';h.note=data.translation||'';h.gist=data.gist||'';h.updatedAt=now();
+   save('pkos:knowledge');state.panel={type:'hl',item:h};
+   render();toast('Translated and kept');
+  }
+ }catch(e){state.panel={type:'result',mode,ctx,error:e.message};paintPanel();}
 }
-function addHighlight(ctx,color='yellow'){
- const dup=K.highlights.find(h=>h.documentId===ctx.documentId&&h.start===ctx.start&&h.end===ctx.end);
+function makeVocab(d,c,h){
+ const dup=K.vocabulary.find(v=>v.word===(d.term||c.text)&&v.sourceSentence===c.sentence);
  if(dup)return dup;
- const h={id:uid('hl'),documentId:ctx.documentId,selectedText:ctx.text,start:ctx.start,end:ctx.end,
-  position:{type:'text-offset',start:ctx.start,end:ctx.end},sentence:ctx.sentence,color,note:'',tags:[],
-  createdAt:now(),updatedAt:now()};
- K.highlights.push(h);save('pkos:knowledge');
- if(state.view==='reader')viewReader();
- toast('Highlighted');return h;
+ const v={id:uid('vocab'),word:d.term||c.text,language:d.lang||c.lang,meaning:d.general||'',
+  contextualMeaning:d.contextual||'',partOfSpeech:d.pos||'',pronunciation:d.pron||d.hanja||'',
+  exampleSentence:d.example||'',userExample:'',tags:(d.tags||[]).slice(0,3),
+  sourceDocumentId:c.documentId,sourceHighlightId:(h||addHL(c,'word')).id,
+  sourceSentence:c.sentence,sourceParagraph:c.paragraph,
+  difficulty:0,reviewStatus:'new',interval:0,ease:2.5,reps:0,lapses:0,stage:0,
+  nextReviewAt:dayjs(1),createdAt:now(),updatedAt:now(),origin:'assisted'};
+ K.vocabulary.push(v);return v;
 }
 
-/* ---------- Inspector ---------- */
+/* ---------- Details panel ---------- */
 function shell(title,body,right=''){
  return `<div class="grabber"></div><div class="phead"><h4>${title}</h4><span class="spacer"></span>${right}
-  <button class="iconbtn" data-close>${svg('close',2)}</button></div><div class="pbody">${body}</div>`;}
+  <button class="iconbtn" data-close>${svg('close',2)}</button></div><div class="pbody">${body}</div>`;
+}
 function tagEditor(kind,o){
  return `<div class="tagrow">${(o.tags||[]).map(t=>
   `<span class="tg">${esc(t)}<button data-untag="${kind}:${o.id}:${esc(t)}">×</button></span>`).join('')}
-  <input class="taginput" placeholder="+ tag" data-tagfor="${kind}:${o.id}"></div>`;}
+  <input class="taginput" placeholder="+ tag" data-tagfor="${kind}:${o.id}"></div>`;
+}
 function paintPanel(){
  const p=state.panel;
- if(!p){$panel.classList.remove('open');
+ if(DB.prefs.panel===false&&window.innerWidth>1120&&p)DB.prefs.panel=true,applyPrefs();
+ if(!p){
+  $panel.classList.remove('open');
   const recent=[...K.vocabulary].slice(-4).reverse();
   $panel.innerHTML=shell('Details',`<div class="empty">Select text in a document</div>`+
-   (recent.length?`<h3 class="sec" style="font-size:13px;color:var(--label3);margin:20px 0 8px">Recent words</h3>
+   (recent.length?`<h3 class="sec" style="font-size:13px;color:var(--label3);margin:18px 0 8px">Recent words</h3>
     <div class="list">${recent.map(v=>`<button class="item" data-item="vocabulary:${v.id}">
     <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div></button>`).join('')}</div>`:''));
   return;}
  $panel.classList.add('open');
- if(p.type==='result')$panel.innerHTML=resultHTML(p);
- else if(p.type==='compose')$panel.innerHTML=composeHTML(p);
- else if(p.type==='detail')$panel.innerHTML=detailHTML(p);
- else if(p.type==='hl')$panel.innerHTML=hlHTML(p);
- else if(p.type==='docedit')$panel.innerHTML=docEditHTML(p);
- const ta=$panel.querySelector('textarea')||$panel.querySelector('#cname');if(ta)ta.focus();
+ const H={result:resultHTML,memo:memoHTML,compose:composeHTML,detail:detailHTML,
+          hl:hlHTML,docedit:docEditHTML,readset:readSetHTML,diag:diagHTML};
+ $panel.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
+ const f=$panel.querySelector('textarea')||$panel.querySelector('input');if(f)f.focus();
 }
 function resultHTML(p){
- const{ctx}=p,badge=p.cached?'<span class="badge blue">cached</span>':'';
+ const{ctx}=p;
  if(p.loading)return shell('Looking up',`<div class="card"><span class="spin"></span>Reading context…</div>`);
  if(p.error)return shell('Error',`<div class="err">${esc(p.error)}</div>
   <div class="acts"><button class="btn sm" data-retry>Try again</button>
-  <button class="btn sec sm" data-diag>Diagnose</button>
-  <button class="btn sec sm" data-act2="hl">Highlight only</button></div>
+   <button class="btn sec sm" data-diag>Diagnose</button></div>
   <div style="font-size:11.5px;color:var(--label3);margin-top:10px">route: ${API_MODE||'unknown'}</div>`);
  const d=p.data;
- if(p.mode==='term')return shell('Word',`<div class="card">
-  <p class="term">${esc(d.term||ctx.text)}</p>
-  <div class="pos">${[d.pos,d.pron,d.hanja].filter(Boolean).map(esc).join(' · ')||(ctx.lang==='ko'?'Korean':'English')}</div>
-  <div class="f"><div class="k">In context</div><div class="v ko">${esc(d.contextual||'')}</div></div>
-  ${d.general?`<div class="f"><div class="k">General</div><div class="v ko">${esc(d.general)}</div></div>`:''}
-  ${d.en?`<div class="f"><div class="k">English</div><div class="v">${esc(d.en)}</div></div>`:''}
-  <div class="f"><div class="k">Sentence</div><div class="quote">${esc(ctx.sentence)}</div></div>
-  ${d.sentence_ko?`<div class="f"><div class="k">Translation</div><div class="v ko">${esc(d.sentence_ko)}</div></div>`:''}
-  ${d.example?`<div class="f"><div class="k">Example</div><div class="v">${esc(d.example)}</div>
-   <div class="v ko" style="color:var(--label2);margin-top:2px">${esc(d.example_ko||'')}</div></div>`:''}
-  ${(d.tags||[]).length?`<div class="tagrow">${d.tags.map(t=>`<span class="tg">${esc(t)}</span>`).join('')}</div>`:''}
-  <div class="acts"><button class="btn sm" data-save="vocab">Save to Words</button>
-   <button class="btn sec sm" data-save="concept">${d.concept?`Concept · ${esc(d.concept)}`:'As concept'}</button>
-   <button class="btn sec sm" data-act2="hl">Highlight</button>
-   <button class="btn sec sm" data-compose="thought">Thought</button></div></div>`,badge);
  if(p.mode==='passage')return shell('Passage',`<div class="card">
   <div class="f"><div class="k">Source</div><div class="quote">${esc(ctx.text)}</div></div>
   <div class="f"><div class="k">Translation</div><div class="v ko" style="font-size:15.5px">${esc(d.translation||'')}</div></div>
   ${d.gist?`<div class="f"><div class="k">Gist</div><div class="v ko">${esc(d.gist)}</div></div>`:''}
   ${(d.terms||[]).length?`<div class="f"><div class="k">Key terms</div>${d.terms.map(t=>
    `<div class="v" style="margin:4px 0"><b style="font-weight:590">${esc(t.term)}</b> · ${esc(t.meaning)}</div>`).join('')}</div>`:''}
-  <div class="acts"><button class="btn sm" data-act2="hl">Highlight</button>
-   <button class="btn sec sm" data-save="concept">As concept</button>
-   <button class="btn sec sm" data-compose="thought">Thought</button>
-   <button class="btn sec sm" data-compose="question">Question</button></div></div>`,badge);
- return shell(p.mode==='deep'?'In depth':'Simple',`<div class="card">
+  <div class="acts"><button class="btn sec sm" data-explain="explain">Explain</button>
+   <button class="btn sec sm" data-memo>Memo</button></div></div>`);
+ return shell(p.mode==='deep'?'In depth':'Explanation',`<div class="card">
   <div class="f"><div class="k">Source</div><div class="quote">${esc(ctx.text)}</div></div>
   <div class="f"><div class="v ko" style="font-size:15.5px;line-height:1.6">${esc(d.explanation||'')}</div></div>
   ${d.analogy?`<div class="f"><div class="k">Analogy</div><div class="v ko">${esc(d.analogy)}</div></div>`:''}
-  <div class="acts"><button class="btn sm" data-save="concept">As concept</button>
-   ${p.mode==='explain'?'<button class="btn sec sm" data-act3="deep">In depth</button>':''}
-   <button class="btn sec sm" data-act2="hl">Highlight</button>
-   <button class="btn sec sm" data-compose="thought">Thought</button></div></div>`,badge);
+  <div class="acts">${p.mode!=='deep'?'<button class="btn sec sm" data-explain="deep">Go deeper</button>':''}
+   <button class="btn sec sm" data-memo>Memo</button></div></div>`);
+}
+/* A memo is one box with a label on it, not three separate features. */
+function memoHTML(p){
+ const kinds=[['thought','Thought'],['question','Question'],['check','To check']];
+ return shell('Memo',`<div class="card">
+  <div class="f"><div class="k">On</div><div class="quote">${esc((p.ctx.text||'').slice(0,240))}</div></div>
+  <div class="seg tight" style="margin-bottom:10px">${kinds.map(([k,l])=>
+   `<button data-memokind="${k}" aria-current="${p.memoKind===k}">${l}</button>`).join('')}</div>
+  <textarea class="tin" id="memobody" style="width:100%;min-height:130px;line-height:1.55"
+   placeholder="${p.memoKind==='question'?'What is unclear?':p.memoKind==='check'?'What should I look into?':'What do you think?'}">${esc(p.body||'')}</textarea>
+  <div class="acts"><button class="btn sm" data-memosave>Save</button>
+   <button class="btn sec sm" data-close>Cancel</button></div></div>`);
 }
 function composeHTML(p){
- const T={thought:'Thought',question:'Question',concept:'Concept'}[p.kind];
- return shell(T,`<div class="card">
+ return shell({thought:'Thought',question:'Question',concept:'Concept'}[p.kind],`<div class="card">
   ${p.ctx?.text?`<div class="f"><div class="k">Source</div><div class="quote">${esc(p.ctx.text.slice(0,240))}</div></div>`:''}
   ${p.kind==='concept'?`<input class="tin" id="cname" placeholder="Concept name" style="width:100%;margin-bottom:9px" value="${esc(p.prefill||'')}">`:''}
   <textarea class="tin" id="cbody" style="width:100%;min-height:130px;line-height:1.55">${esc(p.prefillBody||'')}</textarea>
@@ -878,8 +855,7 @@ function composeHTML(p){
 }
 function detailHTML(p){
  const o=p.item,t=p.kind,m=o.sourceDocumentId?meta(o.sourceDocumentId):null;
- const T={vocabulary:'Word',concepts:'Concept',thoughts:'Thought',questions:'Question'}[t];
- return shell(T,`<div class="card">
+ return shell({vocabulary:'Word',concepts:'Concept',thoughts:'Thought',questions:'Question'}[t],`<div class="card">
   <p class="term">${esc(o.word||o.name||'')}</p>
   ${o.partOfSpeech?`<div class="pos">${esc(o.partOfSpeech)}</div>`:''}
   ${o.contextualMeaning?`<div class="f"><div class="k">In context</div><div class="v ko">${esc(o.contextualMeaning)}</div></div>`:''}
@@ -887,109 +863,84 @@ function detailHTML(p){
   ${o.definition?`<div class="f"><div class="k">Definition</div><div class="v ko">${esc(o.definition)}</div></div>`:''}
   ${o.body?`<div class="f"><div class="v ko" style="white-space:pre-wrap">${esc(o.body)}</div></div>`:''}
   ${o.sourceSentence?`<div class="f"><div class="k">Sentence</div><div class="quote">${esc(o.sourceSentence)}</div></div>`:''}
+  ${o.sourceParagraph&&o.sourceParagraph!==o.sourceSentence?`<div class="f"><div class="k">Paragraph</div>
+    <div class="quote" style="border-color:var(--sep-strong);font-size:13px">${esc(o.sourceParagraph)}</div></div>`:''}
   ${o.exampleSentence?`<div class="f"><div class="k">Example</div><div class="v">${esc(o.exampleSentence)}</div></div>`:''}
   ${t==='vocabulary'?tagEditor('vocabulary',o):''}
   ${m?`<div class="f"><div class="k">Document</div><button class="btn plain sm" data-open="${m.id}" style="margin-left:-8px">${esc(m.title)}</button></div>`:''}
-  ${o.nextReviewAt?`<div class="f"><div class="k">Next review</div><div class="v">${o.nextReviewAt.slice(0,10)}</div></div>`:''}
+  ${o.nextReviewAt?`<div class="f"><div class="k">Next review</div><div class="v">${o.nextReviewAt.slice(0,10)} · stage ${QSHORT[QTYPES[Math.min(3,o.stage||0)]]}</div></div>`:''}
   <div class="acts"><button class="btn danger" data-del="${t}:${o.id}">Delete</button></div></div>`);
+}
+function hlHTML(p){
+ const h=p.item,rel=[...K.vocabulary,...K.concepts,...K.thoughts,...K.questions].filter(o=>o.sourceHighlightId===h.id);
+ return shell(KINDLABEL[h.kind||'mark'],`<div class="card">
+  <div class="quote">${esc(h.selectedText)}</div>
+  <div class="seg tight" style="margin:12px 0 0">${['mark','word','memo'].map(k=>
+   `<button data-kind="${h.id}:${k}" aria-current="${(h.kind||'mark')===k}">${KINDLABEL[k]}</button>`).join('')}</div>
+  ${h.translation?`<div class="f"><div class="k">Translation</div><div class="v ko">${esc(h.translation)}</div></div>`:''}
+  <div class="f"><div class="k">Margin note</div>
+   <textarea class="tin" id="hlnote" style="width:100%;min-height:60px;line-height:1.5">${esc(h.note||'')}</textarea></div>
+  ${tagEditor('highlights',h)}
+  <div class="acts"><button class="btn sm" data-savenote="${h.id}">Save note</button>
+   <button class="btn danger" data-del="highlights:${h.id}">Delete</button></div></div>
+  ${rel.length?`<h3 class="sec" style="font-size:13px;color:var(--label3);margin:16px 0 8px">Linked · ${rel.length}</h3>
+   <div class="list">${rel.map(o=>`<button class="item" data-item="${o.word?'vocabulary':o.name?'concepts':o.status?'questions':'thoughts'}:${o.id}">
+   <h4>${esc(o.word||o.name||o.body?.slice(0,60)||'')}</h4></button>`).join('')}</div>`:''}`);
+}
+function readSetHTML(){
+ const p=DB.prefs;
+ return shell('Reading',`<div class="card">
+  <div class="setrow"><span class="k">Text size</span>
+   <span class="flexrow" style="margin:0;gap:6px">
+    <button class="btn sec sm" data-read="-">−</button>
+    <input class="numin" id="readnum" type="number" min="13" max="34" value="${p.read||19}">
+    <button class="btn sec sm" data-read="+">+</button></span></div>
+  <div class="setrow"><span class="k">Typeface</span>
+   <span class="seg tight">${[['serif','Serif'],['sans','Sans'],['mono','Mono']].map(([k,l])=>
+    `<button data-font="${k}" aria-current="${(p.font||'serif')===k}">${l}</button>`).join('')}</span></div>
+  <div class="setrow"><span class="k">Column width</span>
+   <span class="seg tight">${[['narrow','Narrow'],['normal','Normal'],['wide','Wide']].map(([k,l])=>
+    `<button data-width="${k}" aria-current="${(p.width||'normal')===k}">${l}</button>`).join('')}</span></div>
+  <div class="setrow"><span class="k">Line spacing</span>
+   <span class="seg tight">${[[1.5,'Tight'],[1.68,'Normal'],[1.9,'Loose']].map(([k,l])=>
+    `<button data-lh="${k}" aria-current="${Number(p.lh||1.68)===k}">${l}</button>`).join('')}</span></div>
+  <div class="setrow"><span class="k">New words per day</span>
+   <input class="numin" id="newnum" type="number" min="1" max="60" value="${p.newPerDay||10}"></div>
+  </div>`);
 }
 function docEditHTML(p){
  const m=p.item,d=docCache[m.id];
  return shell('Document',`<div class="card">
-  <div class="f"><div class="k">Title</div>
-   <input class="tin" id="dtitle" style="width:100%" value="${esc(m.title)}"></div>
-  <div class="f"><div class="k">Author or source</div>
-   <input class="tin" id="dauthor" style="width:100%" value="${esc(m.author||'')}"></div>
-  <div class="f"><div class="k">Domain</div>
-   <select class="tin" id="ddomain" style="width:100%">${DOMAINS.map(x=>
-    `<option ${m.domain===x?'selected':''}>${x}</option>`).join('')}</select></div>
+  <div class="f"><div class="k">Title</div><input class="tin" id="dtitle" style="width:100%" value="${esc(m.title)}"></div>
+  <div class="f"><div class="k">Author or source</div><input class="tin" id="dauthor" style="width:100%" value="${esc(m.author||'')}"></div>
+  <div class="f"><div class="k">Domain</div><select class="tin" id="ddomain" style="width:100%">${DOMAINS.map(x=>
+   `<option ${m.domain===x?'selected':''}>${x}</option>`).join('')}</select></div>
   <div class="f"><div class="k">Text</div>
    <textarea class="tin" id="dcontent" style="width:100%;min-height:220px;line-height:1.55;font-family:var(--serif);font-size:14px">${esc(d?.content||'')}</textarea>
    <div style="font-size:11.5px;color:var(--label3);margin-top:6px;line-height:1.45">
-    Highlights re-attach to their own text after an edit. Any that can no longer be found are kept and flagged rather than deleted.</div></div>
+    Highlights re-attach to their own text after an edit. Any that can no longer be found are flagged, not deleted.</div></div>
   <div class="acts"><button class="btn sm" data-docsave="${m.id}">Save</button>
    <button class="btn sec sm" data-close>Cancel</button>
    <button class="btn danger" data-docdel="${m.id}">${state.confirmDel===m.id?'Tap again to delete':'Delete document'}</button></div></div>`);
 }
-function hlHTML(p){
- const h=p.item,rel=[...K.vocabulary,...K.concepts,...K.thoughts,...K.questions].filter(o=>o.sourceHighlightId===h.id);
- return shell('Highlight',`<div class="card">
-  <div class="quote" style="border-color:var(--hl-${h.color||'yellow'})">${esc(h.selectedText)}</div>
-  <div class="chips">${COLORS.map(c=>`<button class="chip" data-color="${h.id}:${c}" aria-current="${(h.color||'yellow')===c}"
-   style="background:var(--hl-${c})" title="${esc(labelFor(c))}"></button>`).join('')}</div>
-  <div class="f" style="margin-top:10px"><div class="k">Means</div>
-   <input class="linput" data-label="${h.color||'yellow'}" value="${esc(labelFor(h.color))}"></div>
-  ${h.translation?`<div class="f"><div class="k">Translation</div><div class="v ko">${esc(h.translation)}</div></div>`:''}
-  <div class="f"><div class="k">Margin note</div>
-   <textarea class="tin" id="hlnote" style="width:100%;min-height:62px;line-height:1.5">${esc(h.note||'')}</textarea></div>
-  ${tagEditor('highlights',h)}
-  <div class="acts"><button class="btn sm" data-savenote="${h.id}">Save note</button>
-   <button class="btn sec sm" data-hlc="thought:${h.id}">Thought</button>
-   <button class="btn sec sm" data-hlc="question:${h.id}">Question</button>
-   <button class="btn danger" data-del="highlights:${h.id}">Delete</button></div></div>
-  ${rel.length?`<h3 class="sec" style="font-size:13px;color:var(--label3);margin:18px 0 8px">Linked · ${rel.length}</h3>
-   <div class="list">${rel.map(o=>`<button class="item" data-item="${o.word?'vocabulary':o.name?'concepts':o.status?'questions':'thoughts'}:${o.id}">
-   <h4>${esc(o.word||o.name||o.body?.slice(0,60)||'')}</h4></button>`).join('')}</div>`:''}`);
+function diagHTML(p){
+ return shell('Diagnostics',`<div class="card">
+  <div class="f"><div class="k">Route</div><div class="v">${esc(API_MODE||'unknown')}</div></div>
+  <div class="f"><div class="k">Server</div>
+   <pre style="font-size:11.5px;white-space:pre-wrap;word-break:break-all;margin:0;font-family:var(--mono)">${esc(JSON.stringify(p.out,null,1))}</pre></div>
+  <div class="f"><div class="k">Reading</div><div class="v">${esc(p.hint)}</div></div></div>`);
 }
 
-/* ---------- saving ---------- */
-function makeVocab(d,c,h){
- const dup=K.vocabulary.find(v=>v.word===(d.term||c.text)&&v.sourceSentence===c.sentence);
- if(dup)return dup;
- const v={id:uid('vocab'),word:d.term||c.text,language:d.lang||c.lang,meaning:d.general||'',
-  contextualMeaning:d.contextual||'',partOfSpeech:d.pos||'',pronunciation:d.pron||d.hanja||'',
-  exampleSentence:d.example||'',userExample:'',tags:(d.tags||[]).slice(0,3),
-  sourceDocumentId:c.documentId,sourceHighlightId:(h||addHighlight(c,'blue')).id,sourceSentence:c.sentence,
-  difficulty:0,reviewStatus:'new',interval:0,nextReviewAt:dayjs(1),createdAt:now(),updatedAt:now(),origin:'assisted'};
- K.vocabulary.push(v);return v;
-}
-function saveVocab(p){
- const v=makeVocab(p.data,p.ctx);
- save('pkos:knowledge');toast('Saved to Words');
- state.panel={type:'detail',kind:'vocabulary',item:v};render();
-}
-function saveConcept(p){
- const d=p.data||{},c=p.ctx;
- state.panel={type:'compose',kind:'concept',ctx:c,prefill:d.concept||d.term||(c.text.length<60?c.text:''),
-  prefillBody:d.explanation||d.contextual||d.gist||d.translation||''};
- paintPanel();
-}
-function commit(kind){
- const body=($panel.querySelector('#cbody')?.value||'').trim();
- const name=($panel.querySelector('#cname')?.value||'').trim();
- const c=state.panel.ctx||{};
- if(kind!=='concept'&&!body)return toast('Nothing to save');
- if(kind==='concept'&&!name)return toast('Name required');
- const base={id:uid(kind),sourceDocumentId:c.documentId||null,sourceSentence:c.sentence||c.text||'',
-  sourceHighlightId:c.documentId&&c.start!=null?addHighlight(c).id:(c.id||null),
-  createdAt:now(),updatedAt:now(),origin:'user'};
- if(kind==='concept')K.concepts.push({...base,name,definition:body,simpleExplanation:body,
-  relatedConcepts:[],relatedVocabulary:[],interval:0,nextReviewAt:dayjs(2)});
- if(kind==='thought')K.thoughts.push({...base,body});
- if(kind==='question')K.questions.push({...base,body,status:'Unanswered',answer:''});
- save('pkos:knowledge');state.panel=null;render();
- toast({concept:'Concept saved',thought:'Thought saved',question:'Question saved'}[kind]);
-}
-
-/* ---------- Words ----------
-   Scheduling is SM-2: each word carries an ease factor that moves with how well
-   it is recalled. The question type escalates with the word's stage, so the same
-   word gets asked from a different angle instead of becoming a memorised card
-   shape. Every answer is written to reviewLogs, so the algorithm can be replaced
-   later without losing the history it was built on.
-   -------------------------------------------------------------------------- */
+/* ---------- Words: SM-2 scheduling, escalating question types ---------- */
 const QTYPES=['choice','recall','cloze','reverse'];
-const QLABEL={choice:'Pick the meaning',recall:'What does it mean?',
- cloze:'Fill the blank',reverse:'Say it in English'};
+const QLABEL={choice:'Pick the meaning',recall:'What does it mean?',cloze:'Fill the blank',reverse:'Say it in English'};
 const QSHORT={choice:'Choice',recall:'Recall',cloze:'Cloze',reverse:'Reverse'};
 const newPerDay=()=>DB.prefs.newPerDay||10;
-
 function clozeOf(v){
  const sent=v.sourceSentence||v.exampleSentence||'';
  if(!sent||!v.word)return null;
  const i=sent.toLowerCase().indexOf(String(v.word).toLowerCase());
- if(i<0)return null;
- return sent.slice(0,i)+'______'+sent.slice(i+String(v.word).length);
+ return i<0?null:sent.slice(0,i)+'______'+sent.slice(i+String(v.word).length);
 }
 function qtypeFor(v){
  let t=QTYPES[Math.min(3,v.stage||0)];
@@ -1000,36 +951,31 @@ function qtypeFor(v){
 }
 function choicesFor(v){
  const right=v.contextualMeaning||v.meaning||'';
- const wrong=K.vocabulary.filter(x=>x.id!==v.id&&(x.contextualMeaning||x.meaning))
-  .map(x=>x.contextualMeaning||x.meaning).filter(m=>m!==right);
- const picked=[...new Set(wrong)].sort(()=>Math.random()-.5).slice(0,3);
- return [...picked,right].sort(()=>Math.random()-.5).map(t=>({t,ok:t===right}));
+ const wrong=[...new Set(K.vocabulary.filter(x=>x.id!==v.id&&(x.contextualMeaning||x.meaning))
+  .map(x=>x.contextualMeaning||x.meaning).filter(m=>m!==right))];
+ return [...wrong.sort(()=>Math.random()-.5).slice(0,3),right]
+  .sort(()=>Math.random()-.5).map(t=>({t,ok:t===right}));
 }
-function rollNewCounter(){
- const t=new Date().toISOString().slice(0,10);
- if(DB.stats.newDate!==t){DB.stats.newDate=t;DB.stats.newToday=0;save('pkos:stats');}
-}
+function rollNew(){const t=new Date().toISOString().slice(0,10);
+ if(DB.stats.newDate!==t){DB.stats.newDate=t;DB.stats.newToday=0;save('pkos:stats');}}
 function buildSession(){
- rollNewCounter();
+ rollNew();
  const pool=dueWords();
- const seen=pool.filter(v=>(v.reps||0)>0)
-  .sort((a,b)=>String(a.nextReviewAt||'').localeCompare(String(b.nextReviewAt||'')));
+ const seen=pool.filter(v=>v.reps>0).sort((a,b)=>String(a.nextReviewAt||'').localeCompare(String(b.nextReviewAt||'')));
  const room=Math.max(0,newPerDay()-(DB.stats.newToday||0));
- const fresh=pool.filter(v=>!(v.reps||0)).slice(0,room);
- return [...seen,...fresh];
+ return [...seen,...pool.filter(v=>!v.reps).slice(0,room)];
 }
 function schedule(v,g){
- rollNewCounter();
- if(!(v.reps||0)){DB.stats.newToday=(DB.stats.newToday||0)+1;v.introducedAt=now();}
+ rollNew();
+ if(!v.reps){DB.stats.newToday=(DB.stats.newToday||0)+1;v.introducedAt=now();}
  v.ease=Math.max(1.3,Math.min(3.2,(v.ease||2.5)+[-0.2,-0.15,0,0.15][g]));
  v.reps=(v.reps||0)+1;
  if(g===0){
   v.lapses=(v.lapses||0)+1;v.interval=0;v.stage=Math.max(0,(v.stage||0)-1);
-  v.nextReviewAt=new Date(Date.now()+6e5).toISOString();    // back in ten minutes
+  v.nextReviewAt=new Date(Date.now()+6e5).toISOString();
   v.reviewStatus='learning';
   if(v.lapses>=5){v.suspended=true;v.tags=[...new Set([...(v.tags||[]),'leech'])];}
  }else{
-  // a lapsed word restarts short; Hard must still move forward, never stall at 1 day
   const base=v.interval||((v.lapses||0)?1:(v.reps<=1?1:3));
   v.interval=Math.max((v.interval||0)+1,Math.round(base*(g===1?1.2:g===2?v.ease:v.ease*1.3)));
   v.nextReviewAt=dayjs(v.interval);v.reviewStatus='review';
@@ -1041,9 +987,7 @@ function schedule(v,g){
  if(K.reviewLogs.length>2000)K.reviewLogs.splice(0,K.reviewLogs.length-2000);
  save('pkos:knowledge','pkos:stats');
 }
-function nextCard(){
- state.revealed=false;state.qtype=null;state.choices=null;state.picked=null;state.clozeOk=null;
-}
+function nextCard(){state.revealed=false;state.qtype=null;state.choices=null;state.picked=null;state.clozeOk=null;}
 function gradeWord(g){
  const v=state.testQueue.shift();if(!v)return;
  schedule(v,g);
@@ -1051,163 +995,141 @@ function gradeWord(g){
  state.sessionDone=(state.sessionDone||0)+1;
  nextCard();render();
 }
-
 function viewWords(){
  $tb.textContent='Words';
  if(state.testing)return viewTest();
- rollNewCounter();
+ rollNew();
  const all=K.vocabulary,f=state.wordFilter;
- const by={all,due:dueWords(),
-  new:all.filter(v=>!(v.reps||0)&&!v.suspended),
-  learning:all.filter(v=>v.reviewStatus==='learning'&&!v.suspended),
-  leech:all.filter(v=>v.suspended)};
- const list=by[f]||all;
- const tabs=[['all','All'],['due','Due'],['new','New'],['learning','Learning'],['leech','Leech']];
- const rows=[...list].reverse().map(v=>{
+ const by={all,due:dueWords(),new:all.filter(v=>!v.reps&&!v.suspended),
+  learning:all.filter(v=>v.reviewStatus==='learning'&&!v.suspended),leech:all.filter(v=>v.suspended)};
+ const rows=[...(by[f]||all)].reverse().map(v=>{
   const m=v.sourceDocumentId?meta(v.sourceDocumentId):null;
-  const overdue=!v.nextReviewAt||v.nextReviewAt<=now();
+  const over=!v.nextReviewAt||v.nextReviewAt<=now();
   return `<button class="item" data-item="vocabulary:${v.id}">
    <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div>
    <div class="m">${(v.tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('')}
     <span>${m?esc(m.title):'Manual'}</span><span>${QSHORT[qtypeFor(v)]}</span>
-    ${v.suspended?'<span class="badge">paused</span>'
-      :overdue?'<span class="badge due">due</span>':`<span>${v.nextReviewAt.slice(5,10)}</span>`}</div></button>`;}).join('');
+    ${v.suspended?'<span class="badge">paused</span>':over?'<span class="badge due">due</span>':`<span>${v.nextReviewAt.slice(5,10)}</span>`}</div></button>`;}).join('');
  const session=buildSession();
  $view.innerHTML=`<div class="view">
   <div class="largetitle"><h1>Words</h1><span class="c">${all.length}</span><span class="spacer"></span>
    ${session.length?`<button class="btn" data-test>Start test · ${session.length}</button>`
-     :all.length?`<button class="btn sec" data-test>Practice</button>`:''}</div>
-  <div class="seg">${tabs.map(([k,l])=>`<button data-wf="${k}" aria-current="${f===k}">${l}<span class="n">${(by[k]||[]).length}</span></button>`).join('')}</div>
+    :all.length?`<button class="btn sec" data-test>Practice</button>`:''}</div>
+  <div class="seg">${[['all','All'],['due','Due'],['new','New'],['learning','Learning'],['leech','Leech']]
+   .map(([k,l])=>`<button data-wf="${k}" aria-current="${f===k}">${l}<span class="n">${(by[k]||[]).length}</span></button>`).join('')}</div>
   ${rows?`<div class="list">${rows}</div>`:'<div class="empty">No words here</div>'}
-  <p style="font-size:12px;color:var(--label3);margin-top:14px">New today ${DB.stats.newToday||0} / ${newPerDay()}</p></div>`;
+  <p style="font-size:12px;color:var(--label3);margin-top:13px">New today ${DB.stats.newToday||0} / ${newPerDay()}</p></div>`;
 }
-
 function viewTest(){
  const q=state.testQueue;
  if(!q.length){
   const n=state.sessionDone||0;state.testing=false;state.sessionDone=0;
   $view.innerHTML=`<div class="view"><div class="largetitle"><h1>Done</h1></div>
-   <div class="rv"><p class="rvterm">${n}</p>
-    <div style="color:var(--label2)">answered this session</div>
-    <div class="flexrow" style="justify-content:center;margin-top:22px">
+   <div class="rv"><p class="rvterm">${n}</p><div style="color:var(--label2)">answered this session</div>
+    <div class="flexrow" style="justify-content:center;margin-top:20px">
      <button class="btn" data-nav="words">Back to Words</button></div></div></div>`;
   return;}
-
  const v=q[0];
  if(!state.qtype)state.qtype=qtypeFor(v);
  const type=state.qtype,meaning=v.contextualMeaning||v.meaning||'';
  const total=(state.sessionDone||0)+q.length;
  const pct=Math.round(((state.sessionDone||0)/Math.max(1,total))*100);
- const grades=`<div class="grade">${[['Again','10m'],['Hard','x1.2'],
-   ['Good','x'+(v.ease||2.5).toFixed(1)],['Easy','longer']]
-   .map(([l,x],i)=>`<button data-tgrade="${i}">${l}<small>${x}</small></button>`).join('')}</div>`;
-
+ const grades=`<div class="grade">${[['Again','10m'],['Hard','x1.2'],['Good','x'+(v.ease||2.5).toFixed(1)],['Easy','longer']]
+  .map(([l,x],i)=>`<button data-tgrade="${i}">${l}<small>${x}</small></button>`).join('')}</div>`;
  let card='';
  if(type==='choice'){
   if(!state.choices)state.choices=choicesFor(v);
   card=`<p class="rvterm">${esc(v.word)}</p>
    <div class="opts">${state.choices.map((c,i)=>{
-    let cls='opt';
-    if(state.picked!=null)cls=c.ok?'opt ok':(state.picked===i?'opt no':'opt');
+    let cls='opt';if(state.picked!=null)cls=c.ok?'opt ok':(state.picked===i?'opt no':'opt');
     return `<button class="${cls}" data-pick="${i}" ${state.picked!=null?'disabled':''}>${esc(c.t)}</button>`;}).join('')}</div>
    ${state.picked!=null?grades:''}`;
  }else if(type==='recall'){
   card=`<p class="rvterm">${esc(v.word)}</p>
-   ${v.sourceSentence?`<div class="quote" style="text-align:left;margin:18px 0 0">${esc(v.sourceSentence)}</div>`:''}
-   ${state.revealed
-    ?`<div style="font-family:var(--serif);font-size:19px;line-height:1.5;margin-top:18px">${esc(meaning)}</div>${grades}`
-    :`<button class="btn sec" data-reveal style="margin-top:20px">Reveal</button>`}`;
+   ${v.sourceSentence?`<div class="quote" style="text-align:left;margin:16px 0 0">${esc(v.sourceSentence)}</div>`:''}
+   ${state.revealed?`<div style="font-family:var(--serif);font-size:19px;line-height:1.5;margin-top:16px">${esc(meaning)}</div>${grades}`
+    :`<button class="btn sec" data-reveal style="margin-top:18px">Reveal</button>`}`;
  }else if(type==='cloze'){
   card=`<div class="qsent">${esc(clozeOf(v)||'')}</div>
    ${state.clozeOk==null
     ?`<input class="cin" id="clozein" placeholder="type the word" autocapitalize="off" autocomplete="off" spellcheck="false">
-      <div class="flexrow" style="justify-content:center;gap:8px"><button class="btn" data-check>Check</button>
+      <div class="flexrow" style="justify-content:center"><button class="btn" data-check>Check</button>
       <button class="btn sec" data-showans>Show answer</button></div>`
-    :`<p class="rvterm" style="font-size:30px;margin-top:6px">${esc(v.word)}</p>
+    :`<p class="rvterm" style="font-size:29px">${esc(v.word)}</p>
       <div style="color:var(--label2);font-size:14px">${esc(meaning)}</div>
-      <div style="font-size:12.5px;color:${state.clozeOk?'#34C759':'var(--label3)'};margin-top:6px">
-       ${state.clozeOk?'Correct':'Not quite'}</div>${grades}`}`;
+      <div style="font-size:12.5px;color:${state.clozeOk?'#34C759':'var(--label3)'};margin-top:6px">${state.clozeOk?'Correct':'Not quite'}</div>${grades}`}`;
  }else{
-  card=`<div style="font-family:var(--serif);font-size:22px;line-height:1.4">${esc(meaning)}</div>
-   ${state.revealed
-    ?`<p class="rvterm" style="margin-top:16px">${esc(v.word)}</p>
-      ${v.exampleSentence?`<div style="font-size:13px;color:var(--label2);margin-top:8px">${esc(v.exampleSentence)}</div>`:''}${grades}`
-    :`<button class="btn sec" data-reveal style="margin-top:20px">Reveal</button>`}`;
+  card=`<div style="font-family:var(--serif);font-size:21px;line-height:1.4">${esc(meaning)}</div>
+   ${state.revealed?`<p class="rvterm" style="margin-top:14px">${esc(v.word)}</p>
+     ${v.exampleSentence?`<div style="font-size:13px;color:var(--label2);margin-top:8px">${esc(v.exampleSentence)}</div>`:''}${grades}`
+    :`<button class="btn sec" data-reveal style="margin-top:18px">Reveal</button>`}`;
  }
-
  $view.innerHTML=`<div class="view">
   <div class="largetitle"><h1>Test</h1><span class="c">${q.length} left</span><span class="spacer"></span>
    <button class="btn sec sm" data-nav="words">End</button></div>
   <div class="pbar"><i style="width:${pct}%"></i></div>
   <div class="rv"><div class="qtype">${QLABEL[type]}</div>${card}</div></div>`;
- const ci=document.getElementById('clozein');if(ci)ci.focus();
+ if($('clozein'))$('clozein').focus();
 }
 
 /* ---------- Knowledge ---------- */
 function viewKnowledge(){
  $tb.textContent='Knowledge';
  const tabs=[['concepts','Concepts',K.concepts.length],['thoughts','Thoughts',K.thoughts.length],
-  ['questions','Questions',K.questions.length],['highlights','Highlights',K.highlights.length]];
- if(state.tab==='vocabulary')state.tab='concepts';
- let src=[...(K[state.tab]||[])].reverse();
+  ['questions','Questions',K.questions.length],['highlights','Marks',K.highlights.length]];
+ if(!['concepts','thoughts','questions','highlights'].includes(state.tab))state.tab='concepts';
  const isHl=state.tab==='highlights';
- if(isHl&&state.colorFilter!=='all')src=src.filter(h=>(h.color||'yellow')===state.colorFilter);
- const labelBar=isHl?`<div class="labelrow">
-  <button class="lchip" data-cf="all" aria-current="${state.colorFilter==='all'}">All
-   <span class="n">${K.highlights.length}</span></button>
-  ${COLORS.map(c=>`<button class="lchip" data-cf="${c}" aria-current="${state.colorFilter===c}">
-   <i style="background:var(--hl-${c})"></i>${esc(labelFor(c))}
-   <span class="n">${K.highlights.filter(h=>(h.color||'yellow')===c).length}</span></button>`).join('')}</div>`:'';
+ let src=[...(K[state.tab]||[])].reverse();
+ if(isHl&&state.hlFilter!=='all')src=src.filter(h=>(h.kind||'mark')===state.hlFilter);
+ const bar=isHl?`<div class="labelrow">
+  <button class="lchip" data-hf="all" aria-current="${state.hlFilter==='all'}">All<span class="n">${K.highlights.length}</span></button>
+  ${['mark','word','memo'].map(k=>`<button class="lchip" data-hf="${k}" aria-current="${state.hlFilter===k}">
+   <span class="dot ${k}"></span>${KINDLABEL[k]}<span class="n">${K.highlights.filter(h=>(h.kind||'mark')===k).length}</span></button>`).join('')}</div>`:'';
  const rows=src.map(o=>{
-  const m=o.sourceDocumentId?meta(o.sourceDocumentId):null;
+  const m=o.sourceDocumentId||o.documentId?meta(o.sourceDocumentId||o.documentId):null;
   const title=o.name||(o.body?o.body.slice(0,70):'')||o.selectedText?.slice(0,70)||'';
-  const sub=o.definition||(state.tab==='highlights'?'':o.sentence)||'';
+  const sub=o.definition||(isHl?(o.note||o.translation||''):o.sourceSentence)||'';
   return `<button class="item" data-item="${state.tab}:${o.id}">
    <h4>${esc(title)}</h4>${sub?`<div class="b">${esc(sub)}</div>`:''}
-   <div class="m">${isHl?`<span class="badge">${esc(labelFor(o.color))}</span>`:''}
+   <div class="m">${isHl?`<span class="badge ${o.kind||'mark'}">${KINDLABEL[o.kind||'mark']}</span>`:''}
     ${(o.tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('')}
     <span>${m?esc(m.title):'Manual'}</span><span>${o.createdAt.slice(0,10)}</span>
-    ${o.status==='Unanswered'?'<span class="badge">open</span>':''}</div></button>`;}).join('');
+    ${o.status==='Unanswered'?'<span class="badge">open</span>':''}
+    ${o.orphaned?'<span class="badge">lost place</span>':''}</div></button>`;}).join('');
  $view.innerHTML=`<div class="view">
   <div class="largetitle"><h1>Knowledge</h1></div>
   <div class="seg">${tabs.map(([k,l,n])=>`<button data-tab="${k}" aria-current="${state.tab===k}">${l}<span class="n">${n}</span></button>`).join('')}</div>
-  ${labelBar}
-  ${rows?`<div class="list">${rows}</div>`:'<div class="empty">Nothing here yet</div>'}</div>`;
+  ${bar}${rows?`<div class="list">${rows}</div>`:'<div class="empty">Nothing here yet</div>'}</div>`;
 }
-
-/* ---------- Review (concepts) ---------- */
 function viewReview(){
  $tb.textContent='Review';
  const q=dueConcepts();
- if(!q.length){$view.innerHTML=`<div class="view"><div class="largetitle"><h1>Review</h1></div>
-  <div class="empty">Nothing due</div></div>`;return;}
+ if(!q.length)return $view.innerHTML=`<div class="view"><div class="largetitle"><h1>Review</h1></div>
+  <div class="empty">Nothing due</div></div>`;
  const it=q[0];
  $view.innerHTML=`<div class="view"><div class="largetitle"><h1>Review</h1><span class="c">${q.length}</span></div>
   <div class="rv"><p class="rvterm">${esc(it.name)}</p>
-   ${it.sourceSentence?`<div class="quote" style="text-align:left;margin:18px 0 0">${esc(it.sourceSentence)}</div>`:''}
-   ${state.revealed?`<div style="font-family:var(--serif);font-size:18px;line-height:1.5;margin-top:18px">${esc(it.definition||it.simpleExplanation||'')}</div>
-    <div class="grade">${[['Again','10m'],['Hard','1d'],['Good','3d'],['Easy','7d']].map(([l,s],i)=>
-     `<button data-grade="${i}">${l}<small>${s}</small></button>`).join('')}</div>`
-    :`<button class="btn sec" data-reveal style="margin-top:20px">Reveal</button>`}
-  </div></div>`;
+   ${it.sourceSentence?`<div class="quote" style="text-align:left;margin:16px 0 0">${esc(it.sourceSentence)}</div>`:''}
+   ${state.revealed?`<div style="font-family:var(--serif);font-size:18px;line-height:1.5;margin-top:16px">${esc(it.definition||'')}</div>
+    <div class="grade">${[['Again','10m'],['Hard','1d'],['Good','3d'],['Easy','7d']].map(([l,x],i)=>
+     `<button data-grade="${i}">${l}<small>${x}</small></button>`).join('')}</div>`
+    :`<button class="btn sec" data-reveal style="margin-top:18px">Reveal</button>`}</div></div>`;
 }
-function grade(g){
+function gradeConcept(g){
  const it=dueConcepts()[0];if(!it)return;
- const mult=[0,1,2.5,4][g],base=it.interval||1;
- it.interval=g===0?.02:Math.max(1,Math.round(base*mult));
+ const base=it.interval||1;
+ it.interval=g===0?.02:Math.max(1,Math.round(base*[0,1.2,2.5,4][g]));
  it.nextReviewAt=dayjs(it.interval);it.updatedAt=now();
  save('pkos:knowledge');state.revealed=false;render();
 }
-
-/* ---------- Today ---------- */
 function viewToday(){
  $tb.textContent='Today';
  const t=new Date().toISOString().slice(0,10),c=a=>a.filter(x=>x.createdAt.slice(0,10)===t).length;
- const reading=DB.index.docs.filter(d=>d.progress>.01&&d.progress<.98);
+ const reading=DB.index.docs.filter(d=>d.progress>.02&&d.progress<.97);
  const qs=K.questions.filter(q=>q.status!=='Answered').slice(-5).reverse();
  $view.innerHTML=`<div class="view"><div class="largetitle"><h1>Today</h1></div>
-  <div class="stats">${[['Words',c(K.vocabulary)],['Concepts',c(K.concepts)],['Thoughts',c(K.thoughts)],
-   ['Questions',c(K.questions)],['Due',dueWords().length+dueConcepts().length]].map(([l,n])=>
+  <div class="stats">${[['Words',c(K.vocabulary)],['Memos',c(K.thoughts)+c(K.questions)],
+   ['Highlights',c(K.highlights)],['Due',dueWords().length+dueConcepts().length]].map(([l,n])=>
    `<div class="stat"><div class="v">${n}</div><div class="l">${l}</div></div>`).join('')}</div>
   <h3 class="sec">Continue reading</h3>
   ${reading.length?`<div class="list">${reading.map(docRow).join('')}</div>`:'<div class="empty">Nothing in progress</div>'}
@@ -1215,8 +1137,6 @@ function viewToday(){
   ${qs.length?`<div class="list">${qs.map(q=>`<button class="item" data-item="questions:${q.id}">
    <h4>${esc(q.body.slice(0,90))}</h4></button>`).join('')}</div>`:'<div class="empty">None</div>'}</div>`;
 }
-
-/* ---------- Search ---------- */
 function viewSearch(){
  const q=state.query.toLowerCase(),hit=(...f)=>f.filter(Boolean).join(' ').toLowerCase().includes(q);
  $tb.textContent='Search';
@@ -1226,7 +1146,7 @@ function viewSearch(){
   ['Concepts',K.concepts.filter(c=>hit(c.name,c.definition)),c=>({t:c.name,s:c.definition,item:'concepts:'+c.id})],
   ['Thoughts',K.thoughts.filter(x=>hit(x.body)),x=>({t:x.body.slice(0,70),s:'',item:'thoughts:'+x.id})],
   ['Questions',K.questions.filter(x=>hit(x.body)),x=>({t:x.body.slice(0,70),s:x.status,item:'questions:'+x.id})],
-  ['Highlights',K.highlights.filter(h=>hit(h.selectedText,(h.tags||[]).join(' '))),h=>({t:h.selectedText.slice(0,70),s:meta(h.documentId)?.title,item:'highlights:'+h.id})]];
+  ['Marks',K.highlights.filter(h=>hit(h.selectedText,h.note,(h.tags||[]).join(' '))),h=>({t:h.selectedText.slice(0,70),s:meta(h.documentId)?.title,item:'highlights:'+h.id})]];
  const total=g.reduce((n,[,l])=>n+l.length,0);
  $view.innerHTML=`<div class="view"><div class="largetitle"><h1>${esc(state.query)}</h1><span class="c">${total}</span></div>
   ${g.filter(([,l])=>l.length).map(([label,list,map])=>`<h3 class="sec">${label}
@@ -1242,161 +1162,182 @@ document.addEventListener('click',async e=>{
  try{
  const T=e.target;
  const th=T.closest('[data-settheme]');
- if(th){DB.prefs.theme=th.dataset.settheme;document.documentElement.dataset.theme=DB.prefs.theme;
-  store.set('pkos:prefs',DB.prefs);paintUsage();return;}
+ if(th){DB.prefs.theme=th.dataset.settheme;applyPrefs();store.set('pkos:prefs',DB.prefs);return paintUsage();}
  const nav=T.closest('[data-nav]');if(nav)return go(nav.dataset.nav);
  const op=T.closest('[data-open]');if(op)return go('reader',{docId:op.dataset.open});
  const dm=T.closest('[data-dom]');if(dm){state.domain=dm.dataset.dom;return render();}
  const so=T.closest('[data-sort]');if(so){state.sort=so.dataset.sort;return render();}
- const sz=T.closest('[data-size]');
- if(sz){DB.prefs.readSize=Math.max(15,Math.min(28,(DB.prefs.readSize||19)+(sz.dataset.size==='+'?1:-1)));
-  store.set('pkos:prefs',DB.prefs);await viewReader();return;}
+ const tab=T.closest('[data-tab]');if(tab){state.tab=tab.dataset.tab;return render();}
+ const wf=T.closest('[data-wf]');if(wf){state.wordFilter=wf.dataset.wf;return render();}
+ const hf=T.closest('[data-hf]');if(hf){state.hlFilter=hf.dataset.hf;return render();}
+
+ if(T.closest('#panelbtn')){
+  if(window.innerWidth<=1120){$panel.classList.toggle('open');return;}
+  DB.prefs.panel=DB.prefs.panel===false;applyPrefs();store.set('pkos:prefs',DB.prefs);return;}
+ if(T.closest('[data-readset]')){state.panel={type:'readset'};return paintPanel();}
+ const rd=T.closest('[data-read]');
+ if(rd){DB.prefs.read=Math.max(13,Math.min(34,(DB.prefs.read||19)+(rd.dataset.read==='+'?1:-1)));
+  applyPrefs();store.set('pkos:prefs',DB.prefs);paintPanel();return;}
+ const ft=T.closest('[data-font]');
+ if(ft){DB.prefs.font=ft.dataset.font;applyPrefs();store.set('pkos:prefs',DB.prefs);return paintPanel();}
+ const wd=T.closest('[data-width]');
+ if(wd){DB.prefs.width=wd.dataset.width;applyPrefs();store.set('pkos:prefs',DB.prefs);
+  if(state.view==='reader')requestAnimationFrame(renderMargins);return paintPanel();}
+ const lh=T.closest('[data-lh]');
+ if(lh){DB.prefs.lh=Number(lh.dataset.lh);applyPrefs();store.set('pkos:prefs',DB.prefs);
+  if(state.view==='reader')requestAnimationFrame(renderMargins);return paintPanel();}
+
  const ed=T.closest('[data-editdoc]');
  if(ed){const m=meta(ed.dataset.editdoc);await loadDoc(m.id);
   state.confirmDel=null;state.panel={type:'docedit',item:m};return paintPanel();}
  const ds=T.closest('[data-docsave]');
  if(ds){
-  const m=meta(ds.dataset.docsave),old=(docCache[m.id]||{}).content||'';
-  const next=$panel.querySelector('#dcontent').value;
-  m.title=$panel.querySelector('#dtitle').value.trim()||m.title;
-  m.author=$panel.querySelector('#dauthor').value.trim();
-  m.domain=$panel.querySelector('#ddomain').value;
-  m.updatedAt=now();
+  const m=meta(ds.dataset.docsave),prev=(docCache[m.id]||{}).content||'';
+  const next=$('dcontent').value;
+  m.title=$('dtitle').value.trim()||m.title;
+  m.author=$('dauthor').value.trim();m.domain=$('ddomain').value;m.updatedAt=now();
   let msg='Saved';
-  if(next!==old){
-   const r=reanchor(m.id,old,next);
+  if(next!==prev){
+   const r=reanchor(m.id,next);
    m.chars=next.length;m.language=isKo(next.slice(0,400))?'ko':'en';
    docCache[m.id]={id:m.id,content:next};await store.set('pkos:doc:'+m.id,docCache[m.id]);
-   msg=`Saved · ${r.moved} highlights moved${r.lost?`, ${r.lost} lost their place`:''}`;
-  }
+   msg=`Saved · ${r.moved} re-attached${r.lost?`, ${r.lost} lost their place`:''}`;}
   save('pkos:index','pkos:knowledge');state.panel=null;lastReaderDoc=null;render();return toast(msg);}
  const dd=T.closest('[data-docdel]');
- if(dd){
-  const id=dd.dataset.docdel;
+ if(dd){const id=dd.dataset.docdel;
   if(state.confirmDel!==id){state.confirmDel=id;return paintPanel();}
   DB.index.docs=DB.index.docs.filter(d=>d.id!==id);
-  K.highlights=K.highlights.filter(h=>h.documentId!==id);DB.knowledge.highlights=K.highlights;
+  K.highlights=K.highlights.filter(h=>h.documentId!==id);
   delete docCache[id];save('pkos:index','pkos:knowledge');
   state.confirmDel=null;state.panel=null;return go('library');}
- const tab=T.closest('[data-tab]');if(tab){state.tab=tab.dataset.tab;return render();}
- const wf=T.closest('[data-wf]');if(wf){state.wordFilter=wf.dataset.wf;return render();}
- if(T.closest('[data-test]')){
-  const s=buildSession();
-  state.testQueue=s.length?s:[...K.vocabulary].filter(v=>!v.suspended).sort(()=>Math.random()-.5).slice(0,20);
-  state.testing=true;state.sessionDone=0;nextCard();return render();}
- const pk=T.closest('[data-pick]');
- if(pk){state.picked=+pk.dataset.pick;return render();}
- if(T.closest('[data-check]')){
-  const v=state.testQueue[0];
-  const got=(document.getElementById('clozein')?.value||'').trim().toLowerCase();
-  state.clozeOk=got===String(v.word).trim().toLowerCase();return render();}
- if(T.closest('[data-showans]')){state.clozeOk=false;return render();}
- const tg=T.closest('[data-tgrade]');if(tg)return gradeWord(+tg.dataset.tgrade);
+
  const it=T.closest('[data-item]');
  if(it){const[k,id]=it.dataset.item.split(':');const o=K[k].find(x=>x.id===id);
-  if(o)state.panel=k==='highlights'?{type:'hl',item:o}:{type:'detail',kind:k,item:o};return paintPanel();}
- const cf=T.closest('[data-cf]');if(cf){state.colorFilter=cf.dataset.cf;return render();}
- const sn=T.closest('[data-savenote]');
- if(sn){const h=K.highlights.find(x=>x.id===sn.dataset.savenote);
-  h.note=($panel.querySelector('#hlnote')?.value||'').trim();h.updatedAt=now();
-  save('pkos:knowledge');if(state.view==='reader')await viewReader();
-  paintPanel();return toast('Note saved');}
+  if(o)state.panel=k==='highlights'?{type:'hl',item:o}:{type:'detail',kind:k,item:o};
+  if(window.innerWidth<=1120)$panel.classList.add('open');
+  return paintPanel();}
  const hl=T.closest('[data-hl]');
  if(hl){const h=K.highlights.find(x=>x.id===hl.dataset.hl);if(!h)return;
   document.querySelectorAll('mark.hl.on').forEach(m=>m.classList.remove('on'));
   const mk=document.querySelector(`mark[data-hl="${h.id}"]`);if(mk)mk.classList.add('on');
-  state.panel={type:'hl',item:h};return paintPanel();}
- const a3=T.closest('[data-act3]');if(a3){const p=state.panel;return act('deep',p.ctx,false);}
- const col=T.closest('[data-color]');
- if(col){const[id,c]=col.dataset.color.split(':');const h=K.highlights.find(x=>x.id===id);
-  h.color=c;h.updatedAt=now();save('pkos:knowledge');if(state.view==='reader')await viewReader();return paintPanel();}
- const ut=T.closest('[data-untag]');
- if(ut){const[k,id,tag]=ut.dataset.untag.split(':');const o=K[k].find(x=>x.id===id);
-  o.tags=(o.tags||[]).filter(x=>x!==tag);save('pkos:knowledge');return paintPanel();}
- if(T.closest('[data-close]')){state.panel=null;return paintPanel();}
- if(T.closest('#panelbtn')){$panel.classList.toggle('open');return;}
- if(T.closest('[data-reveal]')){state.revealed=true;return render();}
- const gr=T.closest('[data-grade]');if(gr)return grade(+gr.dataset.grade);
- const sv=T.closest('[data-save]');if(sv)return sv.dataset.save==='vocab'?saveVocab(state.panel):saveConcept(state.panel);
- if(T.closest('[data-act2]'))return addHighlight(state.panel.ctx);
- const cp=T.closest('[data-compose]');
- if(cp){state.panel={type:'compose',kind:cp.dataset.compose,ctx:state.panel.ctx};return paintPanel();}
- const hc=T.closest('[data-hlc]');
- if(hc){const[kind,id]=hc.dataset.hlc.split(':');const h=K.highlights.find(x=>x.id===id);
-  state.panel={type:'compose',kind,ctx:{...h,text:h.selectedText,sentence:h.sentence}};return paintPanel();}
- const cm=T.closest('[data-commit]');if(cm)return commit(cm.dataset.commit);
- const dl=T.closest('[data-del]');
- if(dl){const[k,id]=dl.dataset.del.split(':');K[k]=K[k].filter(x=>x.id!==id);DB.knowledge[k]=K[k];
-  save('pkos:knowledge');state.panel=null;toast('Deleted');return render();}
+  state.panel={type:'hl',item:h};
+  if(window.innerWidth<=1120)$panel.classList.add('open');
+  return paintPanel();}
+ const kd=T.closest('[data-kind]');
+ if(kd){const[id,k]=kd.dataset.kind.split(':');const h=K.highlights.find(x=>x.id===id);
+  h.kind=k;h.updatedAt=now();save('pkos:knowledge');
+  if(state.view==='reader')await viewReader();return paintPanel();}
+ const sn=T.closest('[data-savenote]');
+ if(sn){const h=K.highlights.find(x=>x.id===sn.dataset.savenote);
+  h.note=($('hlnote')?.value||'').trim();h.updatedAt=now();save('pkos:knowledge');
+  if(state.view==='reader')await viewReader();paintPanel();return toast('Note saved');}
+
+ const mk=T.closest('[data-memokind]');
+ if(mk){state.panel.memoKind=mk.dataset.memokind;
+  state.panel.body=$('memobody')?.value||'';return paintPanel();}
+ if(T.closest('[data-memo]')){
+  state.panel={type:'memo',ctx:state.panel.ctx,memoKind:'thought'};return paintPanel();}
+ if(T.closest('[data-memosave]')){
+  const p=state.panel,body=($('memobody')?.value||'').trim();
+  if(!body)return toast('Nothing to save');
+  const h=p.hl||addHL(p.ctx,'memo');
+  const base={id:uid('memo'),sourceDocumentId:p.ctx.documentId,sourceSentence:p.ctx.sentence,
+   sourceParagraph:p.ctx.paragraph,sourceHighlightId:h.id,body,createdAt:now(),updatedAt:now(),origin:'user'};
+  if(p.memoKind==='thought')K.thoughts.push(base);
+  else K.questions.push({...base,status:p.memoKind==='check'?'Investigating':'Unanswered',answer:''});
+  h.note=body.slice(0,140);h.kind='memo';h.updatedAt=now();
+  save('pkos:knowledge');state.panel=null;
+  if(state.view==='reader')await viewReader();
+  render();return toast('Memo saved');}
+
+ const ex=T.closest('[data-explain]');
+ if(ex){const p=state.panel;return act2(ex.dataset.explain,p.ctx);}
+ if(T.closest('[data-retry]')){const p=state.panel;return act('word',p.ctx,p.mode==='term');}
  if(T.closest('[data-diag]')){
   $panel.innerHTML=shell('Diagnostics','<div class="card"><span class="spin"></span>Checking…</div>');
   let out;
-  try{const r=await fetch('/api/lookup');out={status:r.status,body:await r.json().catch(()=>'(not JSON)')};}
-  catch(e){out={error:e.message};}
-  const hint=out.status===200?(out.body?.geminiKey==='set'
-    ?'Server and key look fine. The failure is in the model call — send me the message above.'
-    :'GEMINI_API_KEY is missing. Vercel → Settings → Environment Variables → then Redeploy.')
-   :out.status===404?'/api/lookup does not exist. The api folder did not upload. Check that GitHub shows api/lookup.js.'
-   :'Could not reach the server function.';
-  $panel.innerHTML=shell('Diagnostics',`<div class="card">
-   <div class="f"><div class="k">Route</div><div class="v">${esc(API_MODE||'unknown')}</div></div>
-   <div class="f"><div class="k">GET /api/lookup</div>
-    <pre style="font-size:11.5px;white-space:pre-wrap;word-break:break-all;margin:0;font-family:ui-monospace,monospace">${esc(JSON.stringify(out,null,1))}</pre></div>
-   <div class="f"><div class="k">Reading</div><div class="v">${esc(hint)}</div></div></div>`);
-  return;}
- if(T.closest('[data-retry]')){const p=state.panel;return act(p.mode==='term'||p.mode==='passage'?'lookup':p.mode,p.ctx,p.mode==='term');}
- if(T.closest('#addbtn'))return addDoc(document.getElementById('ntitle').value,document.getElementById('nauthor').value,
-  document.getElementById('paste').value,document.getElementById('ndomain').value);
+  try{const r=await fetch('/api/lookup');out={status:r.status,config:await r.json().catch(()=>'(not JSON)')};}
+  catch(err){out={error:err.message};}
+  if(out.status===200){try{const r2=await fetch('/api/lookup?probe=1');out.probe=await r2.json().catch(()=>'(not JSON)');}
+   catch(err){out.probe={error:err.message};}}
+  const hint=out.status!==200
+   ?(out.status===404?'/api/lookup is not there. The api folder did not upload.':'Could not reach the server function.')
+   :out.config?.geminiKey!=='set'?'GEMINI_API_KEY is missing. Vercel → Settings → Environment Variables, then Redeploy.'
+   :out.probe?.ok?'A real lookup succeeded. Try the word again.'
+   :'The key works but the model call failed. The error under "probe" says why.';
+  state.panel={type:'diag',out,hint};return paintPanel();}
+
+ if(T.closest('[data-test]')){
+  const s=buildSession();
+  state.testQueue=s.length?s:[...K.vocabulary].filter(v=>!v.suspended).sort(()=>Math.random()-.5).slice(0,20);
+  state.testing=true;state.sessionDone=0;nextCard();return render();}
+ const pk=T.closest('[data-pick]');if(pk){state.picked=+pk.dataset.pick;return render();}
+ if(T.closest('[data-check]')){
+  const v=state.testQueue[0];
+  state.clozeOk=($('clozein')?.value||'').trim().toLowerCase()===String(v.word).trim().toLowerCase();
+  return render();}
+ if(T.closest('[data-showans]')){state.clozeOk=false;return render();}
+ const tg=T.closest('[data-tgrade]');if(tg)return gradeWord(+tg.dataset.tgrade);
+ const gr=T.closest('[data-grade]');if(gr)return gradeConcept(+gr.dataset.grade);
+ if(T.closest('[data-reveal]')){state.revealed=true;return render();}
+
+ const cm=T.closest('[data-commit]');
+ if(cm){const kind=cm.dataset.commit,body=($('cbody')?.value||'').trim(),name=($('cname')?.value||'').trim();
+  const c=state.panel.ctx||{};
+  if(kind==='concept'&&!name)return toast('Name required');
+  if(kind!=='concept'&&!body)return toast('Nothing to save');
+  const base={id:uid(kind),sourceDocumentId:c.documentId||null,sourceSentence:c.sentence||'',
+   sourceHighlightId:c.id||null,createdAt:now(),updatedAt:now(),origin:'user'};
+  if(kind==='concept')K.concepts.push({...base,name,definition:body,interval:0,nextReviewAt:dayjs(2)});
+  if(kind==='thought')K.thoughts.push({...base,body});
+  if(kind==='question')K.questions.push({...base,body,status:'Unanswered',answer:''});
+  save('pkos:knowledge');state.panel=null;render();return toast('Saved');}
+ const ut=T.closest('[data-untag]');
+ if(ut){const[k,id,tag]=ut.dataset.untag.split(':');const o=K[k].find(x=>x.id===id);
+  o.tags=(o.tags||[]).filter(x=>x!==tag);save('pkos:knowledge');return paintPanel();}
+ const dl=T.closest('[data-del]');
+ if(dl){const[k,id]=dl.dataset.del.split(':');K[k]=K[k].filter(x=>x.id!==id);
+  save('pkos:knowledge');state.panel=null;
+  if(state.view==='reader')await viewReader();
+  toast('Deleted');return render();}
+ if(T.closest('[data-close]')){state.panel=null;return paintPanel();}
+ if(T.closest('#addbtn'))return addDoc($('ntitle').value,$('nauthor').value,$('paste').value,$('ndomain').value);
  if(!T.closest('.callout')&&!T.closest('.actionbar'))killCo();
  }catch(err){console.error(err);toast('Error: '+(err.message||err));}
 });
+async function act2(mode,ctx){
+ const key=hash(mode+'|'+ctx.text+'|'+ctx.sentence);
+ state.panel={type:'result',mode,ctx,loading:true};paintPanel();
+ try{const{data}=await llm(mode,ctx.text,ctx.sentence,ctx.lang,key);
+  state.panel={type:'result',mode,ctx,data};}
+ catch(e){state.panel={type:'result',mode,ctx,error:e.message};}
+ paintPanel();
+}
 document.addEventListener('keydown',e=>{
- const li=e.target.closest?.('[data-label]');
- if(li&&e.key==='Enter'){
-  DB.prefs.colorLabels={...DB.prefs.colorLabels,[li.dataset.label]:li.value.trim()||li.dataset.label};
-  store.set('pkos:prefs',DB.prefs);
-  if(state.view==='reader')renderMargins();
-  paintPanel();return toast('Label saved');}
- const ti=e.target.closest?.('[data-tagfor]');
- if(ti&&e.key==='Enter'){
-  const[k,id]=ti.dataset.tagfor.split(':');const o=K[k].find(x=>x.id===id);
-  const v=ti.value.trim().toLowerCase();
-  if(v&&!(o.tags||[]).includes(v)){o.tags=[...(o.tags||[]),v];o.updatedAt=now();save('pkos:knowledge');paintPanel();}
-  return;}
  if(e.target.id==='clozein'&&e.key==='Enter'){
   const v=state.testQueue[0];
   state.clozeOk=e.target.value.trim().toLowerCase()===String(v.word).trim().toLowerCase();
   return render();}
- if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();document.getElementById('q').focus();}
+ const ti=e.target.closest?.('[data-tagfor]');
+ if(ti&&e.key==='Enter'){
+  const[k,id]=ti.dataset.tagfor.split(':');const o=K[k].find(x=>x.id===id);
+  const v=ti.value.trim().toLowerCase();
+  if(v&&!(o.tags||[]).includes(v)){o.tags=[...(o.tags||[]),v];save('pkos:knowledge');paintPanel();}
+  return;}
+ if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('q').focus();}
  if(e.key==='Escape'){killCo();if(state.panel){state.panel=null;paintPanel();}}
 });
 document.addEventListener('change',e=>{
+ if(e.target.id==='readnum'){
+  DB.prefs.read=Math.max(13,Math.min(34,+e.target.value||19));applyPrefs();store.set('pkos:prefs',DB.prefs);return;}
+ if(e.target.id==='newnum'){
+  DB.prefs.newPerDay=Math.max(1,Math.min(60,+e.target.value||10));store.set('pkos:prefs',DB.prefs);return;}
  if(e.target.id!=='file')return;
  const f=e.target.files[0];if(!f)return;
  const r=new FileReader();
- r.onload=()=>addDoc(f.name.replace(/\.(txt|md|markdown)$/i,''),'Upload',r.result,'Major / Career');
+ r.onload=()=>addDoc(f.name.replace(/\.(txt|md|markdown)$/i,''),'Upload',r.result,DOMAINS[0]);
  r.readAsText(f);
 });
-/* Navigation goes through the browser's history stack so the phone's back
-   gesture and the desktop back button behave the way people expect. */
-function go(view,opts={}){
- state.view=view;
- if(opts.docId!==undefined)state.docId=opts.docId;
- state.panel=null;state.revealed=false;state.testing=false;state.query='';
- const q=document.getElementById('q');if(q)q.value='';
- $main.scrollTop=0;
- try{history.pushState({view,docId:state.docId},'');}catch(e){}
- render();
-}
-window.addEventListener('popstate',e=>{
- const st=e.state||{view:'library'};
- state.view=st.view||'library';state.docId=st.docId||null;
- state.panel=null;state.testing=false;state.query='';
- const q=document.getElementById('q');if(q)q.value='';
- render();
-});
-try{history.replaceState({view:'library',docId:null},'');}catch(e){}
-
 let qt=null;
 document.getElementById('q').addEventListener('input',e=>{
  clearTimeout(qt);const v=e.target.value.trim();
