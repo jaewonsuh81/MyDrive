@@ -153,7 +153,7 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 .rhead{max-width:33em;margin:20px auto 32px;padding:0 24px}
 .rhead h1{font-family:var(--serif);font-size:31px;font-weight:600;line-height:1.16;letter-spacing:-.015em;margin:12px 0 9px}
 .rhead .meta{font-size:13px;color:var(--label2)}
-.doctext{font-family:var(--serif);font-size:19px;line-height:1.68;letter-spacing:-.003em;max-width:33em;margin:0 auto;padding:0 24px;color:var(--reading-ink)}
+.doctext{font-family:var(--serif);font-size:var(--read,19px);line-height:1.68;letter-spacing:-.003em;max-width:33em;margin:0 auto;padding:0 24px;color:var(--reading-ink)}
 .doctext p{margin:0 0 1.35em;white-space:pre-wrap}
 .doctext ::selection{background:color-mix(in srgb,var(--blue) 26%,transparent)}
 mark.hl{color:inherit;padding:.06em 0;border-radius:2px;cursor:pointer;background:var(--hl-yellow);
@@ -162,6 +162,38 @@ mark.hl[data-c="green"]{background:var(--hl-green)} mark.hl[data-c="blue"]{backg
 mark.hl[data-c="pink"]{background:var(--hl-pink)} mark.hl[data-c="purple"]{background:var(--hl-purple)}
 mark.hl:hover{filter:brightness(.94)} mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
 .known{border-bottom:1.5px dotted color-mix(in srgb,var(--blue) 55%,transparent);cursor:pointer}
+/* selection action bar — always in the same place, never covers the line you read */
+.abar{position:fixed;left:50%;bottom:20px;transform:translate(-50%,150%);z-index:70;
+  display:flex;align-items:center;gap:1px;max-width:min(94vw,780px);
+  background:color-mix(in srgb,var(--elevated) 86%,transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(26px);backdrop-filter:saturate(180%) blur(26px);
+  border:1px solid var(--sep);border-radius:15px;box-shadow:var(--shadow-l);padding:4px;
+  transition:transform .34s var(--ease),opacity .22s ease;opacity:0;overflow-x:auto;scrollbar-width:none}
+.abar::-webkit-scrollbar{display:none}
+.abar.on{transform:translate(-50%,0);opacity:1}
+.abar .sel{font-family:var(--serif);font-size:13px;color:var(--label2);padding:0 11px 0 8px;
+  max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.abar .d{width:1px;align-self:stretch;background:var(--sep);margin:5px 3px;flex:none}
+.abar button{padding:9px 13px;border-radius:11px;font-size:13.5px;white-space:nowrap;flex:none;transition:background .1s}
+.abar button:hover{background:var(--fill2)}
+.abar button.pr{background:var(--blue);color:#fff;font-weight:510}
+.abar button.pr:hover{background:var(--blue-press)}
+.tbextra{display:flex;align-items:center;gap:2px}
+.tbextra .sz{width:30px;height:30px;border-radius:var(--r1);display:grid;place-items:center;color:var(--label2);font-weight:590}
+.tbextra .sz:hover{background:var(--fill3);color:var(--label)}
+.sortsel{background:var(--fill3);border:1px solid transparent;border-radius:var(--r1);padding:5px 9px;
+  font-size:12.5px;color:var(--label2);outline:none}
+.sortsel:focus{border-color:var(--blue)}
+.strip{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 14px;scrollbar-width:none}
+.strip::-webkit-scrollbar{display:none}
+.scard{flex:none;width:186px;text-align:left;background:var(--elevated);border:1px solid var(--sep);
+  border-radius:var(--r2);padding:13px;transition:.14s}
+.scard:hover{box-shadow:var(--shadow-m);transform:translateY(-1px)}
+.scard h4{font-size:13.5px;font-weight:530;margin:0 0 6px;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.scard .bar{height:3px;border-radius:99px;background:var(--fill1);overflow:hidden}
+.scard .bar i{display:block;height:100%;background:var(--blue)}
+.scard .p{font-size:11.5px;color:var(--label3);margin-top:5px;font-variant-numeric:tabular-nums}
 .readwrap{display:grid;grid-template-columns:minmax(0,32em) 0;justify-content:center;position:relative;padding:0 24px}
 .readwrap.wide{grid-template-columns:minmax(0,32em) 184px;gap:26px}
 .readwrap .doctext{padding:0;max-width:none;margin:0}
@@ -232,6 +264,20 @@ mark.hl:hover{filter:brightness(.94)} mark.hl.on{box-shadow:0 0 0 2px var(--blue
 
 .rv{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r3);padding:34px 26px;max-width:520px;text-align:center;box-shadow:var(--shadow-m)}
 .rvterm{font-family:var(--serif);font-size:38px;font-weight:600;letter-spacing:-.02em;margin:0 0 4px;line-height:1.1}
+.qtype{font-size:11px;font-weight:590;color:var(--label3);letter-spacing:.02em;margin-bottom:14px}
+.qsent{font-family:var(--serif);font-size:19px;line-height:1.62;text-align:left;margin:2px 0 18px}
+.opts{display:grid;gap:8px;margin-top:20px}
+.opt{padding:12px 14px;border-radius:var(--r1);background:var(--fill3);border:1px solid transparent;
+  text-align:left;font-size:14.5px;line-height:1.4;transition:.14s}
+.opt:hover:not(:disabled){background:var(--fill2)}
+.opt:disabled{cursor:default}
+.opt.ok{background:color-mix(in srgb,#34C759 16%,transparent);border-color:#34C759}
+.opt.no{background:color-mix(in srgb,#FF3B30 12%,transparent);border-color:#FF3B30}
+.cin{width:100%;text-align:center;font-family:var(--serif);font-size:22px;padding:11px;margin-bottom:14px;
+  border-radius:var(--r1);border:1px solid var(--sep-strong);background:var(--content);outline:none}
+.cin:focus{border-color:var(--blue);box-shadow:0 0 0 3.5px color-mix(in srgb,var(--blue) 22%,transparent)}
+.pbar{height:3px;background:var(--fill1);border-radius:99px;overflow:hidden;margin:0 0 20px;max-width:520px}
+.pbar i{display:block;height:100%;background:var(--blue);border-radius:99px;transition:width .3s var(--ease)}
 .grade{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:22px}
 .grade button{padding:11px 0;border-radius:var(--r1);background:var(--fill2);font-size:13.5px;font-weight:510;transition:.12s}
 .grade button:hover{background:var(--fill1)} .grade button:active{transform:scale(.97)}
@@ -249,7 +295,23 @@ h3.sec{font-size:17px;font-weight:600;letter-spacing:-.015em;margin:26px 0 10px}
   border:1px solid var(--sep);box-shadow:var(--shadow-l);border-radius:99px;padding:9px 18px;font-size:13px;animation:hud .28s var(--ease)}
 @keyframes hud{from{opacity:0;transform:translate(-50%,10px) scale(.96)}}
 .grabber{display:none}
+.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;gap:2px;overflow-x:auto;
+  padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+  background:color-mix(in srgb,var(--elevated) 88%,transparent);
+  -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
+  border-top:1px solid var(--sep);box-shadow:0 -6px 24px rgba(0,0,0,.10);
+  animation:barup .24s var(--ease)}
+@keyframes barup{from{transform:translateY(100%)}}
+.actionbar button{flex:none;padding:9px 15px;border-radius:var(--r1);font-size:14px;background:var(--fill3);white-space:nowrap}
+.actionbar button:first-child{background:var(--blue);color:#fff;font-weight:510}
+.rtools{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.rtools .spacer{flex:1}
+.szbtn{width:30px;height:28px;border-radius:var(--r1);background:var(--fill3);color:var(--label2);
+  display:grid;place-items:center;transition:.12s}
+.szbtn:hover{background:var(--fill2);color:var(--label)}
+.dstat{font-size:12px;color:var(--label3);white-space:nowrap;flex:none}
 
+@media (min-width:1121px){#panelbtn{display:none}}
 @media (max-width:1120px){
   .app{grid-template-columns:214px minmax(0,1fr)}
   .panel{position:fixed;inset:auto 0 0 0;max-height:72dvh;border-left:none;border-top:1px solid var(--sep);
@@ -267,7 +329,7 @@ h3.sec{font-size:17px;font-weight:600;letter-spacing:-.015em;margin:26px 0 10px}
   .navbtn{width:auto;padding:6px 11px;white-space:nowrap} .navbtn .n{display:none}
   .toolbar{padding:0 14px;gap:8px} .field{width:140px} .field:focus-within{width:184px}
   .view{padding:4px 18px 140px} .largetitle h1{font-size:28px}
-  .rhead,.doctext{padding:0 20px} .doctext{font-size:18px} .rhead h1{font-size:26px}
+  .rhead{padding:0 20px} .readwrap{padding:0 20px} .rhead h1{font-size:26px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
@@ -282,12 +344,14 @@ h3.sec{font-size:17px;font-weight:600;letter-spacing:-.015em;margin:26px 0 10px}
   <main class="main" id="main">
     <div class="toolbar" id="toolbar">
       <span class="tbtitle" id="tbtitle"></span><span class="spacer"></span>
+      <span class="tbextra" id="tbextra"></span>
       <label class="field">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="q" placeholder="Search" autocomplete="off" spellcheck="false">
+        <input id="q" placeholder="Search everything" autocomplete="off" spellcheck="false">
       </label>
-      <button class="iconbtn" id="panelbtn" title="Inspector">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></svg>
+      <button class="iconbtn" id="panelbtn" title="Details panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.6v.1"/></svg>
       </button>
     </div>
     <div id="view"></div>
@@ -327,7 +391,7 @@ let wt=null,dirty=new Set();
 function save(...keys){keys.forEach(k=>dirty.add(k));clearTimeout(wt);
  wt=setTimeout(()=>{dirty.forEach(k=>store.set(k,DB[k]));dirty.clear();},300);}
 
-const DB={index:{docs:[]},knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[]},
+const DB={index:{docs:[]},knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],reviewLogs:[]},
  tcache:{},stats:{apiCalls:0,cacheHits:0},
  prefs:{theme:'auto',colorLabels:{yellow:'Important',green:'Example',blue:'Term',pink:'Disagree',purple:'Quote'}}};
 const K=DB.knowledge;
@@ -359,7 +423,12 @@ let state={view:'library',docId:null,panel:null,tab:'concepts',wordFilter:'all',
  if(kn)Object.assign(DB.knowledge,kn);
  if(tc)DB.tcache=tc; if(st)DB.stats=st;
  if(pf)DB.prefs={...DB.prefs,...pf,colorLabels:{...DB.prefs.colorLabels,...(pf.colorLabels||{})}};
- K.vocabulary.forEach(v=>{if(!v.tags)v.tags=[];});
+ if(!K.reviewLogs)K.reviewLogs=[];
+ K.vocabulary.forEach(v=>{                       // migrate entries saved before scheduling existed
+  if(!v.tags)v.tags=[];
+  if(v.ease==null)v.ease=2.5; if(v.reps==null)v.reps=0;
+  if(v.lapses==null)v.lapses=0; if(v.stage==null)v.stage=0;
+  if(v.interval==null)v.interval=0;});
  K.highlights.forEach(h=>{if(!h.tags)h.tags=[];});
  document.documentElement.dataset.theme=DB.prefs.theme||'auto';
  if(ix&&ix.docs?.length){DB.index=ix;}
@@ -397,8 +466,8 @@ async function llm(mode,text,sentence,lang,key){
   }catch(e){r=null;}
   if(r&&r.ok){API_MODE='server';data=await r.json();}
   else if(r&&(r.status===404||r.status===405)){API_MODE='sandbox';}
-  else if(r){const j=await r.json().catch(()=>({}));throw new Error(j.error||('server '+r.status));}
-  else if(API_MODE==='server'){throw new Error('Network error');}
+  else if(r){const j=await r.json().catch(()=>({}));throw new Error(j.error||('server returned '+r.status));}
+  else if(API_MODE==='server'){throw new Error('Could not reach /api/lookup (network)');}
   else{API_MODE='sandbox';}
  }
  if(!data)data=await sandboxLLM(mode,text,sentence,lang);
@@ -432,7 +501,7 @@ const meta=id=>DB.index.docs.find(d=>d.id===id);
 function sentenceAt(t,s,e){let a=s,b=e;const stop='.!?。\n';
  while(a>0&&!stop.includes(t[a-1]))a--;while(b<t.length&&!stop.includes(t[b]))b++;
  return t.slice(a,Math.min(b+1,t.length)).trim();}
-const dueWords=()=>K.vocabulary.filter(v=>!v.nextReviewAt||v.nextReviewAt<=now());
+const dueWords=()=>K.vocabulary.filter(v=>!v.suspended&&(!v.nextReviewAt||v.nextReviewAt<=now()));
 const dueConcepts=()=>K.concepts.filter(c=>!c.nextReviewAt||c.nextReviewAt<=now());
 
 const $view=document.getElementById('view'),$panel=document.getElementById('panel'),$nav=document.getElementById('nav'),
@@ -472,18 +541,56 @@ $main.addEventListener('scroll',()=>{
   if(Math.abs(p-m.progress)>.02){m.progress=p;m.lastReadAt=now();save('pkos:index');}}
 });
 
-/* ---------- Library ---------- */
+/* ---------- Library ----------
+   A flat pile sorted by upload time tells you nothing. What matters when you
+   open this screen is: what am I in the middle of, what have I not started,
+   and what did each document actually give me. So documents are grouped by
+   reading state, and every row carries the count of highlights and words it
+   produced — that is the reason to keep a document rather than its filename.
+   -------------------------------------------------------------------------- */
+const DOMAINS=['Major / Career','English / Liberal Arts','World / News / Investment','General Knowledge'];
+const docStat=d=>({h:K.highlights.filter(x=>x.documentId===d.id&&!x.orphaned).length,
+                   w:K.vocabulary.filter(x=>x.sourceDocumentId===d.id).length});
+function docRow(d){
+ const st=docStat(d),pct=Math.round(d.progress*100);
+ const bits=[esc(d.author||'Unknown'),d.language==='ko'?'Korean':'English'];
+ if(st.h)bits.push(st.h+' highlights');
+ if(st.w)bits.push(st.w+' words');
+ return `<button class="row" data-open="${d.id}">
+  <span class="cover">${esc(d.title.trim()[0]||'·')}</span>
+  <span class="txt"><h3>${esc(d.title)}</h3><span class="meta">${bits.join(' · ')}</span></span>
+  ${pct>2?`<span class="bar"><i style="width:${pct}%"></i></span><span class="pct">${pct}%</span>`:''}
+  <span class="chev">${svg('chev',2.2)}</span></button>`;
+}
 function viewLibrary(){
  $tb.textContent='Library';
- const rows=DB.index.docs.map(d=>`<button class="row" data-open="${d.id}">
-  <span class="cover">${esc(d.title.trim()[0]||'·')}</span>
-  <span class="txt"><h3>${esc(d.title)}</h3>
-   <span class="meta">${esc(d.author||'Unknown')} · ${d.language==='ko'?'Korean':'English'} · ${d.chars.toLocaleString()} chars</span></span>
-  ${d.progress>.01?`<span class="bar"><i style="width:${Math.round(d.progress*100)}%"></i></span><span class="pct">${Math.round(d.progress*100)}%</span>`:''}
-  <span class="chev">${svg('chev',2.2)}</span></button>`).join('');
+ const dom=state.domain||'all',sort=state.sort||'recent';
+ let docs=DB.index.docs.filter(d=>dom==='all'||d.domain===dom);
+ const recency=d=>String(d.lastReadAt||d.createdAt||'');
+ docs=[...docs].sort(sort==='title'?(a,b)=>a.title.localeCompare(b.title)
+   :sort==='progress'?(a,b)=>b.progress-a.progress
+   :(a,b)=>recency(b).localeCompare(recency(a)));
+
+ const g={reading:[],unread:[],done:[]};
+ docs.forEach(d=>g[d.progress>=.97?'done':d.progress>.02?'reading':'unread'].push(d));
+ const section=(key,label,list)=>list.length
+  ?`<h3 class="sec">${label}<span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${list.length}</span></h3>
+    <div class="list">${list.map(docRow).join('')}</div>`:'';
+
+ const counts=DB.index.docs.reduce((m,d)=>{m[d.domain]=(m[d.domain]||0)+1;return m;},{});
  $view.innerHTML=`<div class="view">
   <div class="largetitle"><h1>Library</h1><span class="c">${DB.index.docs.length}</span></div>
-  ${rows?`<div class="list">${rows}</div>`:'<div class="empty">No documents yet</div>'}
+  <div class="labelrow">
+   <button class="lchip" data-dom="all" aria-current="${dom==='all'}">All<span class="n">${DB.index.docs.length}</span></button>
+   ${DOMAINS.map(x=>`<button class="lchip" data-dom="${esc(x)}" aria-current="${dom===x}">${esc(x.split(' / ')[0])}
+     <span class="n">${counts[x]||0}</span></button>`).join('')}</div>
+  <div class="seg">${[['recent','Recent'],['title','Title'],['progress','Progress']]
+    .map(([k,l])=>`<button data-sort="${k}" aria-current="${sort===k}">${l}</button>`).join('')}</div>
+  ${DB.index.docs.length===0?'<div class="empty">No documents yet</div>':''}
+  ${section('reading','Reading now',g.reading)}
+  ${section('unread','Not started',g.unread)}
+  ${section('done','Finished',g.done)}
+  ${docs.length===0&&DB.index.docs.length?'<div class="empty">Nothing in this category</div>':''}
   <div class="addcard">
    <div class="flexrow" style="margin:0 0 11px;justify-content:space-between">
     <strong style="font-size:14.5px;font-weight:590">Add document</strong>
@@ -493,8 +600,7 @@ function viewLibrary(){
    <div class="flexrow">
     <input class="tin" id="ntitle" placeholder="Title" style="flex:1.4">
     <input class="tin" id="nauthor" placeholder="Author or source" style="flex:1">
-    <select class="tin" id="ndomain"><option>Major / Career</option><option>English / Liberal Arts</option>
-     <option>World / News / Investment</option><option>General Knowledge</option></select>
+    <select class="tin" id="ndomain">${DOMAINS.map(x=>`<option>${x}</option>`).join('')}</select>
     <button class="btn" id="addbtn">Add</button></div>
   </div></div>`;
 }
@@ -504,14 +610,30 @@ async function addDoc(title,author,content,domain){
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
   language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null});
  await store.set('pkos:doc:'+id,{id,content});docCache[id]={id,content};save('pkos:index');
- state.view='reader';state.docId=id;$main.scrollTop=0;render();toast('Document added');
+ go('reader',{docId:id});toast('Document added');
+}
+
+/* Editing the source text moves every offset after the edit point, so each
+   highlight is re-found by its own text near where it used to be. Anything
+   that genuinely disappeared is kept and flagged rather than silently lost. */
+function reanchor(docId,oldText,newText){
+ let moved=0,lost=0;
+ K.highlights.filter(h=>h.documentId===docId).forEach(h=>{
+  if(newText.slice(h.start,h.end)===h.selectedText){h.orphaned=false;return;}
+  let i=newText.indexOf(h.selectedText,Math.max(0,h.start-800));
+  if(i<0)i=newText.indexOf(h.selectedText);
+  if(i<0){h.orphaned=true;lost++;return;}
+  h.start=i;h.end=i+h.selectedText.length;
+  h.position={type:'text-offset',start:h.start,end:h.end};h.orphaned=false;moved++;
+ });
+ return{moved,lost};
 }
 
 /* ---------- Reader ---------- */
 async function viewReader(){
  const m=meta(state.docId);if(!m){state.view='library';return render();}
  const d=await loadDoc(state.docId);$tb.textContent=m.title;
- const hls=K.highlights.filter(h=>h.documentId===m.id).sort((a,b)=>a.start-b.start);
+ const hls=K.highlights.filter(h=>h.documentId===m.id&&!h.orphaned).sort((a,b)=>a.start-b.start);
  let pos=0;
  const html=d.content.split('\n').map(line=>{
   const b={start:pos,text:line};pos+=line.length+1;
@@ -527,14 +649,28 @@ async function viewReader(){
  const known=K.vocabulary.filter(v=>d.content.toLowerCase().includes(String(v.word).toLowerCase())).length;
  $view.innerHTML=`<div class="view reader">
   <div class="rhead">
-   <button class="btn plain sm" data-nav="library" style="margin-left:-8px">Library</button>
+   <div class="rtools">
+    <button class="btn plain sm" data-nav="library" style="margin-left:-8px">← Library</button>
+    <span class="spacer"></span>
+    <span class="dstat">${DB.prefs.readSize||19}px</span>
+    <button class="szbtn" data-size="-" title="Smaller" style="font-size:12px">A</button>
+    <button class="szbtn" data-size="+" title="Larger" style="font-size:16px">A</button>
+    <button class="btn sec sm" data-editdoc="${m.id}">Edit</button>
+   </div>
    <h1>${esc(m.title)}</h1>
-   <div class="meta">${esc(m.author||'Unknown')} · ${hls.length} highlights${known?` · ${known} saved words appear here`:''}${m.progress>.01?` · ${Math.round(m.progress*100)}% read`:''}</div>
+   <div class="meta">${esc(m.author||'Unknown')} · ${hls.length} highlights${known?` · ${known} saved words here`:''}${m.progress>.01?` · ${Math.round(m.progress*100)}% read`:''}</div>
   </div>
-  <div class="readwrap" id="readwrap"><div class="doctext" id="docbody">${html}</div>
+  <div class="readwrap" id="readwrap"><div class="doctext" id="docbody" style="font-size:${DB.prefs.readSize||19}px">${html}</div>
    <div class="gutter" id="gutter"></div></div></div>`;
  requestAnimationFrame(renderMargins);
+ if(lastReaderDoc!==m.id){                 // opening a document, not redrawing it
+  lastReaderDoc=m.id;
+  if(m.progress>.02)requestAnimationFrame(()=>{
+   $main.scrollTop=m.progress*($main.scrollHeight-$main.clientHeight);
+   renderMargins();toast(`Resumed at ${Math.round(m.progress*100)}%`);});
+ }
 }
+let lastReaderDoc=null;
 
 /* margin notes — a highlight with a note, translation or saved word shows in the gutter */
 function renderMargins(){
@@ -566,30 +702,54 @@ function offsetOf(node,off){
  while((n=w.nextNode())){if(n===node)return +p.dataset.start+acc+off;acc+=n.nodeValue.length;}
  return +p.dataset.start+acc;}
 let $co=null;const killCo=()=>{if($co){$co.remove();$co=null;}};
-document.addEventListener('mouseup',onSel);
-document.addEventListener('touchend',()=>setTimeout(onSel,12));
+/* The menu should appear the moment a selection exists, on every device.
+   selectionchange is the only event that fires reliably on iOS after the
+   native handles settle, so it drives this; mouseup/touchend are kept as a
+   fast path for pointer devices. A collapsed selection is ignored here —
+   dismissal is handled by the click listener, otherwise tapping a button in
+   the menu would destroy the menu before the tap registers. */
+let selT=null;
+const scheduleSel=()=>{clearTimeout(selT);selT=setTimeout(onSel,160);};
+document.addEventListener('selectionchange',scheduleSel);
+document.addEventListener('mouseup',scheduleSel);
+document.addEventListener('touchend',scheduleSel);
 function onSel(){
  if(state.view!=='reader')return;
- const sel=window.getSelection();if(!sel||sel.isCollapsed||!sel.rangeCount)return killCo();
+ const sel=window.getSelection();
+ if(!sel||!sel.rangeCount)return;
+ if(sel.isCollapsed)return;               // leave an open menu alone
  const r=sel.getRangeAt(0),body=document.getElementById('docbody');
- if(!body||!body.contains(r.commonAncestorContainer))return killCo();
- const text=sel.toString().trim();if(!text)return killCo();
+ if(!body||!body.contains(r.commonAncestorContainer))return;
+ const text=sel.toString().trim();if(!text)return;
  const s=offsetOf(r.startContainer,r.startOffset),e=offsetOf(r.endContainer,r.endOffset);
- if(s==null||e==null)return killCo();
+ if(s==null||e==null)return;
+ if($co&&$co.dataset.sig===text+'|'+s)return;   // same selection, menu already up
  showCallout(r.getBoundingClientRect(),{text,start:Math.min(s,e),end:Math.max(s,e)});
 }
 function showCallout(rect,sel){
  killCo();
  const isTerm=isKo(sel.text)?sel.text.length<=12:sel.text.split(/\s+/).length<=4;
- $co=document.createElement('div');$co.className='callout';
  const b=[['Save','save'],[isTerm?'Define':'Translate','lookup'],['Explain','explain'],
   ['Mark','hl'],['Thought','thought'],['Question','question']];
- $co.innerHTML=b.map(([l,a],i)=>`${i?'<span class="d"></span>':''}<button data-act="${a}">${l}</button>`).join('');
- const box=$main.getBoundingClientRect();
- $co.style.left=Math.min(Math.max(rect.left+rect.width/2-box.left+$main.scrollLeft,160),$main.clientWidth-160)+'px';
- $co.style.top=(rect.top-box.top+$main.scrollTop-8)+'px';
- $main.appendChild($co);
- $co.onclick=ev=>{const a=ev.target.closest('[data-act]');if(!a)return;act(a.dataset.act,sel,isTerm);killCo();};
+ const narrow=window.innerWidth<=820;
+ $co=document.createElement('div');
+ $co.dataset.sig=sel.text+'|'+sel.start;
+
+ if(narrow){
+  // A floating bubble covers the text it refers to on a small screen.
+  $co.className='actionbar';
+  $co.innerHTML=b.map(([l,a])=>`<button data-act="${a}">${l}</button>`).join('');
+  document.body.appendChild($co);
+ }else{
+  $co.className='callout';
+  $co.innerHTML=b.map(([l,a],i)=>`${i?'<span class="d"></span>':''}<button data-act="${a}">${l}</button>`).join('');
+  const box=$main.getBoundingClientRect();
+  $co.style.left=Math.min(Math.max(rect.left+rect.width/2-box.left+$main.scrollLeft,160),$main.clientWidth-160)+'px';
+  $co.style.top=(rect.top-box.top+$main.scrollTop-8)+'px';
+  $main.appendChild($co);
+ }
+ $co.onclick=ev=>{const a=ev.target.closest('[data-act]');if(!a)return;
+  act(a.dataset.act,sel,isTerm);killCo();window.getSelection()?.removeAllRanges();};
 }
 async function act(kind,sel,isTerm){
  const d=await loadDoc(state.docId);
@@ -651,7 +811,7 @@ function paintPanel(){
  const p=state.panel;
  if(!p){$panel.classList.remove('open');
   const recent=[...K.vocabulary].slice(-4).reverse();
-  $panel.innerHTML=shell('Inspector',`<div class="empty">Select text in a document</div>`+
+  $panel.innerHTML=shell('Details',`<div class="empty">Select text in a document</div>`+
    (recent.length?`<h3 class="sec" style="font-size:13px;color:var(--label3);margin:20px 0 8px">Recent words</h3>
     <div class="list">${recent.map(v=>`<button class="item" data-item="vocabulary:${v.id}">
     <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div></button>`).join('')}</div>`:''));
@@ -661,6 +821,7 @@ function paintPanel(){
  else if(p.type==='compose')$panel.innerHTML=composeHTML(p);
  else if(p.type==='detail')$panel.innerHTML=detailHTML(p);
  else if(p.type==='hl')$panel.innerHTML=hlHTML(p);
+ else if(p.type==='docedit')$panel.innerHTML=docEditHTML(p);
  const ta=$panel.querySelector('textarea')||$panel.querySelector('#cname');if(ta)ta.focus();
 }
 function resultHTML(p){
@@ -668,7 +829,9 @@ function resultHTML(p){
  if(p.loading)return shell('Looking up',`<div class="card"><span class="spin"></span>Reading context…</div>`);
  if(p.error)return shell('Error',`<div class="err">${esc(p.error)}</div>
   <div class="acts"><button class="btn sm" data-retry>Try again</button>
-  <button class="btn sec sm" data-act2="hl">Highlight only</button></div>`);
+  <button class="btn sec sm" data-diag>Diagnose</button>
+  <button class="btn sec sm" data-act2="hl">Highlight only</button></div>
+  <div style="font-size:11.5px;color:var(--label3);margin-top:10px">route: ${API_MODE||'unknown'}</div>`);
  const d=p.data;
  if(p.mode==='term')return shell('Word',`<div class="card">
   <p class="term">${esc(d.term||ctx.text)}</p>
@@ -730,6 +893,24 @@ function detailHTML(p){
   ${o.nextReviewAt?`<div class="f"><div class="k">Next review</div><div class="v">${o.nextReviewAt.slice(0,10)}</div></div>`:''}
   <div class="acts"><button class="btn danger" data-del="${t}:${o.id}">Delete</button></div></div>`);
 }
+function docEditHTML(p){
+ const m=p.item,d=docCache[m.id];
+ return shell('Document',`<div class="card">
+  <div class="f"><div class="k">Title</div>
+   <input class="tin" id="dtitle" style="width:100%" value="${esc(m.title)}"></div>
+  <div class="f"><div class="k">Author or source</div>
+   <input class="tin" id="dauthor" style="width:100%" value="${esc(m.author||'')}"></div>
+  <div class="f"><div class="k">Domain</div>
+   <select class="tin" id="ddomain" style="width:100%">${DOMAINS.map(x=>
+    `<option ${m.domain===x?'selected':''}>${x}</option>`).join('')}</select></div>
+  <div class="f"><div class="k">Text</div>
+   <textarea class="tin" id="dcontent" style="width:100%;min-height:220px;line-height:1.55;font-family:var(--serif);font-size:14px">${esc(d?.content||'')}</textarea>
+   <div style="font-size:11.5px;color:var(--label3);margin-top:6px;line-height:1.45">
+    Highlights re-attach to their own text after an edit. Any that can no longer be found are kept and flagged rather than deleted.</div></div>
+  <div class="acts"><button class="btn sm" data-docsave="${m.id}">Save</button>
+   <button class="btn sec sm" data-close>Cancel</button>
+   <button class="btn danger" data-docdel="${m.id}">${state.confirmDel===m.id?'Tap again to delete':'Delete document'}</button></div></div>`);
+}
 function hlHTML(p){
  const h=p.item,rel=[...K.vocabulary,...K.concepts,...K.thoughts,...K.questions].filter(o=>o.sourceHighlightId===h.id);
  return shell('Highlight',`<div class="card">
@@ -790,55 +971,176 @@ function commit(kind){
  toast({concept:'Concept saved',thought:'Thought saved',question:'Question saved'}[kind]);
 }
 
-/* ---------- Words ---------- */
+/* ---------- Words ----------
+   Scheduling is SM-2: each word carries an ease factor that moves with how well
+   it is recalled. The question type escalates with the word's stage, so the same
+   word gets asked from a different angle instead of becoming a memorised card
+   shape. Every answer is written to reviewLogs, so the algorithm can be replaced
+   later without losing the history it was built on.
+   -------------------------------------------------------------------------- */
+const QTYPES=['choice','recall','cloze','reverse'];
+const QLABEL={choice:'Pick the meaning',recall:'What does it mean?',
+ cloze:'Fill the blank',reverse:'Say it in English'};
+const QSHORT={choice:'Choice',recall:'Recall',cloze:'Cloze',reverse:'Reverse'};
+const newPerDay=()=>DB.prefs.newPerDay||10;
+
+function clozeOf(v){
+ const sent=v.sourceSentence||v.exampleSentence||'';
+ if(!sent||!v.word)return null;
+ const i=sent.toLowerCase().indexOf(String(v.word).toLowerCase());
+ if(i<0)return null;
+ return sent.slice(0,i)+'______'+sent.slice(i+String(v.word).length);
+}
+function qtypeFor(v){
+ let t=QTYPES[Math.min(3,v.stage||0)];
+ if(t==='cloze'&&!clozeOf(v))t='recall';
+ if(t==='choice'&&K.vocabulary.filter(x=>x.contextualMeaning||x.meaning).length<4)t='recall';
+ if(t==='reverse'&&!(v.contextualMeaning||v.meaning))t='recall';
+ return t;
+}
+function choicesFor(v){
+ const right=v.contextualMeaning||v.meaning||'';
+ const wrong=K.vocabulary.filter(x=>x.id!==v.id&&(x.contextualMeaning||x.meaning))
+  .map(x=>x.contextualMeaning||x.meaning).filter(m=>m!==right);
+ const picked=[...new Set(wrong)].sort(()=>Math.random()-.5).slice(0,3);
+ return [...picked,right].sort(()=>Math.random()-.5).map(t=>({t,ok:t===right}));
+}
+function rollNewCounter(){
+ const t=new Date().toISOString().slice(0,10);
+ if(DB.stats.newDate!==t){DB.stats.newDate=t;DB.stats.newToday=0;save('pkos:stats');}
+}
+function buildSession(){
+ rollNewCounter();
+ const pool=dueWords();
+ const seen=pool.filter(v=>(v.reps||0)>0)
+  .sort((a,b)=>String(a.nextReviewAt||'').localeCompare(String(b.nextReviewAt||'')));
+ const room=Math.max(0,newPerDay()-(DB.stats.newToday||0));
+ const fresh=pool.filter(v=>!(v.reps||0)).slice(0,room);
+ return [...seen,...fresh];
+}
+function schedule(v,g){
+ rollNewCounter();
+ if(!(v.reps||0)){DB.stats.newToday=(DB.stats.newToday||0)+1;v.introducedAt=now();}
+ v.ease=Math.max(1.3,Math.min(3.2,(v.ease||2.5)+[-0.2,-0.15,0,0.15][g]));
+ v.reps=(v.reps||0)+1;
+ if(g===0){
+  v.lapses=(v.lapses||0)+1;v.interval=0;v.stage=Math.max(0,(v.stage||0)-1);
+  v.nextReviewAt=new Date(Date.now()+6e5).toISOString();    // back in ten minutes
+  v.reviewStatus='learning';
+  if(v.lapses>=5){v.suspended=true;v.tags=[...new Set([...(v.tags||[]),'leech'])];}
+ }else{
+  // a lapsed word restarts short; Hard must still move forward, never stall at 1 day
+  const base=v.interval||((v.lapses||0)?1:(v.reps<=1?1:3));
+  v.interval=Math.max((v.interval||0)+1,Math.round(base*(g===1?1.2:g===2?v.ease:v.ease*1.3)));
+  v.nextReviewAt=dayjs(v.interval);v.reviewStatus='review';
+  if(g>=2)v.stage=Math.min(3,(v.stage||0)+1);
+ }
+ v.lastReviewedAt=now();v.updatedAt=now();
+ K.reviewLogs.push({id:uid('rl'),itemId:v.id,itemType:'vocabulary',grade:g,
+  mode:state.qtype||'recall',intervalAfter:v.interval,at:now()});
+ if(K.reviewLogs.length>2000)K.reviewLogs.splice(0,K.reviewLogs.length-2000);
+ save('pkos:knowledge','pkos:stats');
+}
+function nextCard(){
+ state.revealed=false;state.qtype=null;state.choices=null;state.picked=null;state.clozeOk=null;
+}
+function gradeWord(g){
+ const v=state.testQueue.shift();if(!v)return;
+ schedule(v,g);
+ if(g===0)state.testQueue.push(v);
+ state.sessionDone=(state.sessionDone||0)+1;
+ nextCard();render();
+}
+
 function viewWords(){
  $tb.textContent='Words';
  if(state.testing)return viewTest();
- const all=K.vocabulary,due=dueWords();
- const f=state.wordFilter;
- const list=f==='due'?due:f==='new'?all.filter(v=>v.reviewStatus==='new'):
-  f==='learning'?all.filter(v=>v.reviewStatus==='learning'):all;
- const tabs=[['all','All',all.length],['due','Due',due.length],
-  ['new','New',all.filter(v=>v.reviewStatus==='new').length],
-  ['learning','Learning',all.filter(v=>v.reviewStatus==='learning').length]];
+ rollNewCounter();
+ const all=K.vocabulary,f=state.wordFilter;
+ const by={all,due:dueWords(),
+  new:all.filter(v=>!(v.reps||0)&&!v.suspended),
+  learning:all.filter(v=>v.reviewStatus==='learning'&&!v.suspended),
+  leech:all.filter(v=>v.suspended)};
+ const list=by[f]||all;
+ const tabs=[['all','All'],['due','Due'],['new','New'],['learning','Learning'],['leech','Leech']];
  const rows=[...list].reverse().map(v=>{
   const m=v.sourceDocumentId?meta(v.sourceDocumentId):null;
+  const overdue=!v.nextReviewAt||v.nextReviewAt<=now();
   return `<button class="item" data-item="vocabulary:${v.id}">
    <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div>
    <div class="m">${(v.tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('')}
-    <span>${m?esc(m.title):'Manual'}</span>
-    ${!v.nextReviewAt||v.nextReviewAt<=now()?'<span class="badge due">due</span>':`<span>${v.nextReviewAt.slice(5,10)}</span>`}</div></button>`;}).join('');
+    <span>${m?esc(m.title):'Manual'}</span><span>${QSHORT[qtypeFor(v)]}</span>
+    ${v.suspended?'<span class="badge">paused</span>'
+      :overdue?'<span class="badge due">due</span>':`<span>${v.nextReviewAt.slice(5,10)}</span>`}</div></button>`;}).join('');
+ const session=buildSession();
  $view.innerHTML=`<div class="view">
   <div class="largetitle"><h1>Words</h1><span class="c">${all.length}</span><span class="spacer"></span>
-   ${all.length?`<button class="btn" data-test>Start test${due.length?` · ${due.length}`:''}</button>`:''}</div>
-  <div class="seg">${tabs.map(([k,l,n])=>`<button data-wf="${k}" aria-current="${f===k}">${l}<span class="n">${n}</span></button>`).join('')}</div>
-  ${rows?`<div class="list">${rows}</div>`:'<div class="empty">No words here</div>'}</div>`;
+   ${session.length?`<button class="btn" data-test>Start test · ${session.length}</button>`
+     :all.length?`<button class="btn sec" data-test>Practice</button>`:''}</div>
+  <div class="seg">${tabs.map(([k,l])=>`<button data-wf="${k}" aria-current="${f===k}">${l}<span class="n">${(by[k]||[]).length}</span></button>`).join('')}</div>
+  ${rows?`<div class="list">${rows}</div>`:'<div class="empty">No words here</div>'}
+  <p style="font-size:12px;color:var(--label3);margin-top:14px">New today ${DB.stats.newToday||0} / ${newPerDay()}</p></div>`;
 }
+
 function viewTest(){
  const q=state.testQueue;
- if(!q.length){state.testing=false;
+ if(!q.length){
+  const n=state.sessionDone||0;state.testing=false;state.sessionDone=0;
   $view.innerHTML=`<div class="view"><div class="largetitle"><h1>Done</h1></div>
-   <div class="empty">Test finished</div>
-   <div class="flexrow"><button class="btn" data-nav="words">Back to Words</button></div></div>`;return;}
- const it=q[0];
+   <div class="rv"><p class="rvterm">${n}</p>
+    <div style="color:var(--label2)">answered this session</div>
+    <div class="flexrow" style="justify-content:center;margin-top:22px">
+     <button class="btn" data-nav="words">Back to Words</button></div></div></div>`;
+  return;}
+
+ const v=q[0];
+ if(!state.qtype)state.qtype=qtypeFor(v);
+ const type=state.qtype,meaning=v.contextualMeaning||v.meaning||'';
+ const total=(state.sessionDone||0)+q.length;
+ const pct=Math.round(((state.sessionDone||0)/Math.max(1,total))*100);
+ const grades=`<div class="grade">${[['Again','10m'],['Hard','x1.2'],
+   ['Good','x'+(v.ease||2.5).toFixed(1)],['Easy','longer']]
+   .map(([l,x],i)=>`<button data-tgrade="${i}">${l}<small>${x}</small></button>`).join('')}</div>`;
+
+ let card='';
+ if(type==='choice'){
+  if(!state.choices)state.choices=choicesFor(v);
+  card=`<p class="rvterm">${esc(v.word)}</p>
+   <div class="opts">${state.choices.map((c,i)=>{
+    let cls='opt';
+    if(state.picked!=null)cls=c.ok?'opt ok':(state.picked===i?'opt no':'opt');
+    return `<button class="${cls}" data-pick="${i}" ${state.picked!=null?'disabled':''}>${esc(c.t)}</button>`;}).join('')}</div>
+   ${state.picked!=null?grades:''}`;
+ }else if(type==='recall'){
+  card=`<p class="rvterm">${esc(v.word)}</p>
+   ${v.sourceSentence?`<div class="quote" style="text-align:left;margin:18px 0 0">${esc(v.sourceSentence)}</div>`:''}
+   ${state.revealed
+    ?`<div style="font-family:var(--serif);font-size:19px;line-height:1.5;margin-top:18px">${esc(meaning)}</div>${grades}`
+    :`<button class="btn sec" data-reveal style="margin-top:20px">Reveal</button>`}`;
+ }else if(type==='cloze'){
+  card=`<div class="qsent">${esc(clozeOf(v)||'')}</div>
+   ${state.clozeOk==null
+    ?`<input class="cin" id="clozein" placeholder="type the word" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <div class="flexrow" style="justify-content:center;gap:8px"><button class="btn" data-check>Check</button>
+      <button class="btn sec" data-showans>Show answer</button></div>`
+    :`<p class="rvterm" style="font-size:30px;margin-top:6px">${esc(v.word)}</p>
+      <div style="color:var(--label2);font-size:14px">${esc(meaning)}</div>
+      <div style="font-size:12.5px;color:${state.clozeOk?'#34C759':'var(--label3)'};margin-top:6px">
+       ${state.clozeOk?'Correct':'Not quite'}</div>${grades}`}`;
+ }else{
+  card=`<div style="font-family:var(--serif);font-size:22px;line-height:1.4">${esc(meaning)}</div>
+   ${state.revealed
+    ?`<p class="rvterm" style="margin-top:16px">${esc(v.word)}</p>
+      ${v.exampleSentence?`<div style="font-size:13px;color:var(--label2);margin-top:8px">${esc(v.exampleSentence)}</div>`:''}${grades}`
+    :`<button class="btn sec" data-reveal style="margin-top:20px">Reveal</button>`}`;
+ }
+
  $view.innerHTML=`<div class="view">
-  <div class="largetitle"><h1>Test</h1><span class="c">${q.length} left</span></div>
-  <div class="rv"><p class="rvterm">${esc(it.word)}</p>
-   ${it.sourceSentence?`<div class="quote" style="text-align:left;margin:18px 0 0">${esc(it.sourceSentence)}</div>`:''}
-   ${state.revealed?`<div style="font-family:var(--serif);font-size:18px;line-height:1.5;margin-top:18px">${esc(it.contextualMeaning||it.meaning||'')}</div>
-    ${it.exampleSentence?`<div style="font-size:13px;color:var(--label2);margin-top:10px">${esc(it.exampleSentence)}</div>`:''}
-    <div class="grade">${[['Again','10m'],['Hard','1d'],['Good','3d'],['Easy','7d']].map(([l,s],i)=>
-     `<button data-tgrade="${i}">${l}<small>${s}</small></button>`).join('')}</div>`
-    :`<button class="btn sec" data-reveal style="margin-top:20px">Reveal</button>`}
-  </div></div>`;
-}
-function gradeWord(g){
- const it=state.testQueue.shift();if(!it)return;
- const mult=[0,1,2.5,4][g],base=it.interval||1;
- it.interval=g===0?.02:Math.max(1,Math.round(base*mult));
- it.nextReviewAt=dayjs(it.interval);it.reviewStatus=g===0?'learning':'review';it.updatedAt=now();
- if(g===0)state.testQueue.push(it);
- save('pkos:knowledge');state.revealed=false;render();
+  <div class="largetitle"><h1>Test</h1><span class="c">${q.length} left</span><span class="spacer"></span>
+   <button class="btn sec sm" data-nav="words">End</button></div>
+  <div class="pbar"><i style="width:${pct}%"></i></div>
+  <div class="rv"><div class="qtype">${QLABEL[type]}</div>${card}</div></div>`;
+ const ci=document.getElementById('clozein');if(ci)ci.focus();
 }
 
 /* ---------- Knowledge ---------- */
@@ -908,11 +1210,7 @@ function viewToday(){
    ['Questions',c(K.questions)],['Due',dueWords().length+dueConcepts().length]].map(([l,n])=>
    `<div class="stat"><div class="v">${n}</div><div class="l">${l}</div></div>`).join('')}</div>
   <h3 class="sec">Continue reading</h3>
-  ${reading.length?`<div class="list">${reading.map(d=>`<button class="row" data-open="${d.id}">
-   <span class="cover">${esc(d.title.trim()[0]||'·')}</span>
-   <span class="txt"><h3>${esc(d.title)}</h3><span class="meta">${Math.round(d.progress*100)}%</span></span>
-   <span class="bar"><i style="width:${Math.round(d.progress*100)}%"></i></span>
-   <span class="chev">${svg('chev',2.2)}</span></button>`).join('')}</div>`:'<div class="empty">Nothing in progress</div>'}
+  ${reading.length?`<div class="list">${reading.map(docRow).join('')}</div>`:'<div class="empty">Nothing in progress</div>'}
   <h3 class="sec">Open questions</h3>
   ${qs.length?`<div class="list">${qs.map(q=>`<button class="item" data-item="questions:${q.id}">
    <h4>${esc(q.body.slice(0,90))}</h4></button>`).join('')}</div>`:'<div class="empty">None</div>'}</div>`;
@@ -946,17 +1244,53 @@ document.addEventListener('click',async e=>{
  const th=T.closest('[data-settheme]');
  if(th){DB.prefs.theme=th.dataset.settheme;document.documentElement.dataset.theme=DB.prefs.theme;
   store.set('pkos:prefs',DB.prefs);paintUsage();return;}
- const nav=T.closest('[data-nav]');
- if(nav){state.query='';document.getElementById('q').value='';state.view=nav.dataset.nav;state.panel=null;
-  state.revealed=false;state.testing=false;$main.scrollTop=0;return render();}
- const op=T.closest('[data-open]');
- if(op){state.query='';document.getElementById('q').value='';state.view='reader';state.docId=op.dataset.open;
-  state.panel=null;$main.scrollTop=0;return render();}
+ const nav=T.closest('[data-nav]');if(nav)return go(nav.dataset.nav);
+ const op=T.closest('[data-open]');if(op)return go('reader',{docId:op.dataset.open});
+ const dm=T.closest('[data-dom]');if(dm){state.domain=dm.dataset.dom;return render();}
+ const so=T.closest('[data-sort]');if(so){state.sort=so.dataset.sort;return render();}
+ const sz=T.closest('[data-size]');
+ if(sz){DB.prefs.readSize=Math.max(15,Math.min(28,(DB.prefs.readSize||19)+(sz.dataset.size==='+'?1:-1)));
+  store.set('pkos:prefs',DB.prefs);await viewReader();return;}
+ const ed=T.closest('[data-editdoc]');
+ if(ed){const m=meta(ed.dataset.editdoc);await loadDoc(m.id);
+  state.confirmDel=null;state.panel={type:'docedit',item:m};return paintPanel();}
+ const ds=T.closest('[data-docsave]');
+ if(ds){
+  const m=meta(ds.dataset.docsave),old=(docCache[m.id]||{}).content||'';
+  const next=$panel.querySelector('#dcontent').value;
+  m.title=$panel.querySelector('#dtitle').value.trim()||m.title;
+  m.author=$panel.querySelector('#dauthor').value.trim();
+  m.domain=$panel.querySelector('#ddomain').value;
+  m.updatedAt=now();
+  let msg='Saved';
+  if(next!==old){
+   const r=reanchor(m.id,old,next);
+   m.chars=next.length;m.language=isKo(next.slice(0,400))?'ko':'en';
+   docCache[m.id]={id:m.id,content:next};await store.set('pkos:doc:'+m.id,docCache[m.id]);
+   msg=`Saved · ${r.moved} highlights moved${r.lost?`, ${r.lost} lost their place`:''}`;
+  }
+  save('pkos:index','pkos:knowledge');state.panel=null;lastReaderDoc=null;render();return toast(msg);}
+ const dd=T.closest('[data-docdel]');
+ if(dd){
+  const id=dd.dataset.docdel;
+  if(state.confirmDel!==id){state.confirmDel=id;return paintPanel();}
+  DB.index.docs=DB.index.docs.filter(d=>d.id!==id);
+  K.highlights=K.highlights.filter(h=>h.documentId!==id);DB.knowledge.highlights=K.highlights;
+  delete docCache[id];save('pkos:index','pkos:knowledge');
+  state.confirmDel=null;state.panel=null;return go('library');}
  const tab=T.closest('[data-tab]');if(tab){state.tab=tab.dataset.tab;return render();}
  const wf=T.closest('[data-wf]');if(wf){state.wordFilter=wf.dataset.wf;return render();}
  if(T.closest('[data-test]')){
-  const due=dueWords();state.testQueue=(due.length?due:[...K.vocabulary]).slice(0,20);
-  state.testing=true;state.revealed=false;return render();}
+  const s=buildSession();
+  state.testQueue=s.length?s:[...K.vocabulary].filter(v=>!v.suspended).sort(()=>Math.random()-.5).slice(0,20);
+  state.testing=true;state.sessionDone=0;nextCard();return render();}
+ const pk=T.closest('[data-pick]');
+ if(pk){state.picked=+pk.dataset.pick;return render();}
+ if(T.closest('[data-check]')){
+  const v=state.testQueue[0];
+  const got=(document.getElementById('clozein')?.value||'').trim().toLowerCase();
+  state.clozeOk=got===String(v.word).trim().toLowerCase();return render();}
+ if(T.closest('[data-showans]')){state.clozeOk=false;return render();}
  const tg=T.closest('[data-tgrade]');if(tg)return gradeWord(+tg.dataset.tgrade);
  const it=T.closest('[data-item]');
  if(it){const[k,id]=it.dataset.item.split(':');const o=K[k].find(x=>x.id===id);
@@ -994,10 +1328,26 @@ document.addEventListener('click',async e=>{
  const dl=T.closest('[data-del]');
  if(dl){const[k,id]=dl.dataset.del.split(':');K[k]=K[k].filter(x=>x.id!==id);DB.knowledge[k]=K[k];
   save('pkos:knowledge');state.panel=null;toast('Deleted');return render();}
+ if(T.closest('[data-diag]')){
+  $panel.innerHTML=shell('Diagnostics','<div class="card"><span class="spin"></span>Checking…</div>');
+  let out;
+  try{const r=await fetch('/api/lookup');out={status:r.status,body:await r.json().catch(()=>'(not JSON)')};}
+  catch(e){out={error:e.message};}
+  const hint=out.status===200?(out.body?.geminiKey==='set'
+    ?'Server and key look fine. The failure is in the model call — send me the message above.'
+    :'GEMINI_API_KEY is missing. Vercel → Settings → Environment Variables → then Redeploy.')
+   :out.status===404?'/api/lookup does not exist. The api folder did not upload. Check that GitHub shows api/lookup.js.'
+   :'Could not reach the server function.';
+  $panel.innerHTML=shell('Diagnostics',`<div class="card">
+   <div class="f"><div class="k">Route</div><div class="v">${esc(API_MODE||'unknown')}</div></div>
+   <div class="f"><div class="k">GET /api/lookup</div>
+    <pre style="font-size:11.5px;white-space:pre-wrap;word-break:break-all;margin:0;font-family:ui-monospace,monospace">${esc(JSON.stringify(out,null,1))}</pre></div>
+   <div class="f"><div class="k">Reading</div><div class="v">${esc(hint)}</div></div></div>`);
+  return;}
  if(T.closest('[data-retry]')){const p=state.panel;return act(p.mode==='term'||p.mode==='passage'?'lookup':p.mode,p.ctx,p.mode==='term');}
  if(T.closest('#addbtn'))return addDoc(document.getElementById('ntitle').value,document.getElementById('nauthor').value,
   document.getElementById('paste').value,document.getElementById('ndomain').value);
- if(!T.closest('.callout'))killCo();
+ if(!T.closest('.callout')&&!T.closest('.actionbar'))killCo();
  }catch(err){console.error(err);toast('Error: '+(err.message||err));}
 });
 document.addEventListener('keydown',e=>{
@@ -1013,6 +1363,10 @@ document.addEventListener('keydown',e=>{
   const v=ti.value.trim().toLowerCase();
   if(v&&!(o.tags||[]).includes(v)){o.tags=[...(o.tags||[]),v];o.updatedAt=now();save('pkos:knowledge');paintPanel();}
   return;}
+ if(e.target.id==='clozein'&&e.key==='Enter'){
+  const v=state.testQueue[0];
+  state.clozeOk=e.target.value.trim().toLowerCase()===String(v.word).trim().toLowerCase();
+  return render();}
  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();document.getElementById('q').focus();}
  if(e.key==='Escape'){killCo();if(state.panel){state.panel=null;paintPanel();}}
 });
@@ -1023,6 +1377,26 @@ document.addEventListener('change',e=>{
  r.onload=()=>addDoc(f.name.replace(/\.(txt|md|markdown)$/i,''),'Upload',r.result,'Major / Career');
  r.readAsText(f);
 });
+/* Navigation goes through the browser's history stack so the phone's back
+   gesture and the desktop back button behave the way people expect. */
+function go(view,opts={}){
+ state.view=view;
+ if(opts.docId!==undefined)state.docId=opts.docId;
+ state.panel=null;state.revealed=false;state.testing=false;state.query='';
+ const q=document.getElementById('q');if(q)q.value='';
+ $main.scrollTop=0;
+ try{history.pushState({view,docId:state.docId},'');}catch(e){}
+ render();
+}
+window.addEventListener('popstate',e=>{
+ const st=e.state||{view:'library'};
+ state.view=st.view||'library';state.docId=st.docId||null;
+ state.panel=null;state.testing=false;state.query='';
+ const q=document.getElementById('q');if(q)q.value='';
+ render();
+});
+try{history.replaceState({view:'library',docId:null},'');}catch(e){}
+
 let qt=null;
 document.getElementById('q').addEventListener('input',e=>{
  clearTimeout(qt);const v=e.target.value.trim();
