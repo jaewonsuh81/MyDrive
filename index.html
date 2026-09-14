@@ -452,7 +452,7 @@ function paintUsage(){
  $usage.innerHTML=`<div class="u"><span>API calls</span><b>${s.apiCalls}</b></div>
   <div class="u"><span>Cached</span><b>${s.cacheHits}</b></div>
   <div class="themetog">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([k,l])=>
-   `<button data-theme="${k}" aria-current="${(DB.prefs.theme||'auto')===k}">${l}</button>`).join('')}</div>`;
+   `<button data-settheme="${k}" aria-current="${(DB.prefs.theme||'auto')===k}">${l}</button>`).join('')}</div>`;
 }
 function render(){
  paintNav();paintUsage();
@@ -941,9 +941,10 @@ function viewSearch(){
 
 /* ---------- events ---------- */
 document.addEventListener('click',async e=>{
+ try{
  const T=e.target;
- const th=T.closest('[data-theme]');
- if(th){DB.prefs.theme=th.dataset.theme;document.documentElement.dataset.theme=DB.prefs.theme;
+ const th=T.closest('[data-settheme]');
+ if(th){DB.prefs.theme=th.dataset.settheme;document.documentElement.dataset.theme=DB.prefs.theme;
   store.set('pkos:prefs',DB.prefs);paintUsage();return;}
  const nav=T.closest('[data-nav]');
  if(nav){state.query='';document.getElementById('q').value='';state.view=nav.dataset.nav;state.panel=null;
@@ -997,6 +998,7 @@ document.addEventListener('click',async e=>{
  if(T.closest('#addbtn'))return addDoc(document.getElementById('ntitle').value,document.getElementById('nauthor').value,
   document.getElementById('paste').value,document.getElementById('ndomain').value);
  if(!T.closest('.callout'))killCo();
+ }catch(err){console.error(err);toast('Error: '+(err.message||err));}
 });
 document.addEventListener('keydown',e=>{
  const li=e.target.closest?.('[data-label]');
