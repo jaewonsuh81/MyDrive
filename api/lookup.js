@@ -85,7 +85,8 @@ const providers = {
       process.env.GEMINI_MODEL,
       'gemini-2.5-flash',
       'gemini-flash-latest',
-      'gemini-2.0-flash',
+      'gemini-3-flash-preview',
+      'gemini-2.5-flash-lite',
     ].filter(Boolean);
 
     let lastError;
@@ -100,8 +101,12 @@ const providers = {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.2,
-              maxOutputTokens: 1024,
+              // Thinking is billed against the output budget. A dictionary
+              // lookup does not need it, and leaving it on lets the model burn
+              // the whole allowance before writing a single character.
+              maxOutputTokens: 4096,
               responseMimeType: 'application/json',
+              ...thinkingConfigFor(model),
             },
           }),
         }
@@ -109,11 +114,14 @@ const providers = {
 
       if (r.ok) {
         const j = await r.json();
-        const text = (j.candidates?.[0]?.content?.parts || [])
-          .map((p) => p.text || '')
-          .join('');
+        const cand = j.candidates?.[0];
+        const text = (cand?.content?.parts || []).map((p) => p.text || '').join('');
         if (text.trim()) return text;
-        lastError = new Error('Empty response from ' + model);
+        // Empty body: say why, instead of silently moving on.
+        lastError = new Error(
+          `${model} returned nothing (finishReason=${cand?.finishReason || 'none'}` +
+            `${j.promptFeedback?.blockReason ? ', blocked=' + j.promptFeedback.blockReason : ''})`
+        );
         continue;
       }
 
@@ -156,6 +164,14 @@ const providers = {
   },
 };
 
+/* Gemini 2.5 lets thinking be switched off outright; Gemini 3 only lets it be
+   turned down. Anything else gets no thinking config at all. */
+function thinkingConfigFor(model) {
+  if (/^gemini-2\.5/.test(model)) return { thinkingConfig: { thinkingBudget: 0 } };
+  if (/^gemini-3/.test(model)) return { thinkingConfig: { thinkingLevel: 'low' } };
+  return {};
+}
+
 /* ---------------------------------------------------------------- helpers */
 function parseJSON(raw) {
   const cleaned = String(raw).replace(/```json|```/g, '').trim();
@@ -173,6 +189,23 @@ function parseJSON(raw) {
     }
     return { explanation: cleaned.slice(0, 600) }; // never lose the answer entirely
   }
+}
+
+async function probe(res, providerName) {
+  const out = { mode: 'probe', provider: providerName };
+  try {
+    const raw = await providers[providerName]({
+      system: SYSTEM,
+      prompt: PROMPTS.term('substantially', 'It substantially reduces cost.', 'en'),
+    });
+    out.rawFirst200 = String(raw).slice(0, 200);
+    out.parsed = parseJSON(raw);
+    out.ok = true;
+  } catch (e) {
+    out.ok = false;
+    out.error = e.message;
+  }
+  return res.status(200).json(out);
 }
 
 async function health(res, providerName) {
@@ -204,7 +237,11 @@ async function health(res, providerName) {
 export default async function handler(req, res) {
   const providerName = process.env.LLM_PROVIDER || 'gemini';
 
-  if (req.method === 'GET') return health(res, providerName);
+  if (req.method === 'GET') {
+    const url = new URL(req.url, 'http://x');
+    if (url.searchParams.get('probe')) return probe(res, providerName);
+    return health(res, providerName);
+  }
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ error: 'Method not allowed' });
