@@ -155,6 +155,9 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 .item .b{font-size:13px;color:var(--label2);line-height:1.45;white-space:pre-wrap;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .item .m{font-size:12px;color:var(--label3);margin-top:6px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.tick{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--sep-strong);flex:none;
+  display:grid;place-items:center;font-size:12px;color:#fff;margin-top:1px;transition:.14s var(--ease)}
+.tick.on{background:var(--blue);border-color:var(--blue)}
 .empty{border:1px dashed var(--sep-strong);border-radius:var(--r2);padding:24px;color:var(--label3);font-size:13.5px;text-align:center}
 .addcard{margin-top:20px;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:15px}
 .addcard textarea{width:100%;min-height:84px;resize:vertical;background:var(--content);border:1px solid var(--sep-strong);
@@ -362,22 +365,169 @@ const ICON={
 const svg=(n,w=1.7)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
 
 /* ---------- storage: sandbox store, then localStorage, then memory ---------- */
+/* Browser storage is finite and fails loudly only if you let it: a swallowed
+   QuotaExceededError means the app keeps reporting "Saved" while nothing is
+   written. Failures are surfaced, and pending writes flush before unload. */
 const mem={};
+let storageFull=false,storageWarned=false;
 const store={
  async get(k){
   try{const r=await window.storage.get(k);if(r)return JSON.parse(r.value);}catch(e){}
   try{const v=localStorage.getItem(k);if(v!=null)return JSON.parse(v);}catch(e){}
   return mem[k]??null;},
- async set(k,v){mem[k]=v;
-  try{await window.storage.set(k,JSON.stringify(v));}catch(e){}
-  try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
-let wt=null,dirty=new Set();
-function save(...keys){keys.forEach(k=>dirty.add(k));clearTimeout(wt);
- wt=setTimeout(()=>{dirty.forEach(k=>store.set(k,DB[k]));dirty.clear();},300);}
+ async set(k,v){
+  mem[k]=v;
+  const str=JSON.stringify(v);
+  let written=false;
+  try{await window.storage.set(k,str);written=true;}catch(e){}
+  try{localStorage.setItem(k,str);written=true;storageFull=false;touchMeta(k);}
+  catch(e){
+   // With a server copy this is a cache miss, not data loss; say so accordingly.
+   if(!written&&!storageWarned&&!SB.on){
+    storageFull=true;storageWarned=true;
+    toast('Storage is full — export a backup and remove a document');
+    setTimeout(()=>{storageWarned=false;},60000);}
+  }
+  if(SB.on){
+   if(k.startsWith('pkos:doc:'))sbPushDoc(k.slice(9),v.content||'').catch(()=>{});
+   else sbPushState(k,v).catch(()=>{});
+   written=true;
+  }
+  return written;}};
+function storageBytes(){
+ try{let n=0;for(const k in localStorage)
+  if(k.startsWith('pkos:'))n+=(localStorage.getItem(k)||'').length;return n;}catch(e){return 0;}
+}
+/* =======================================================================
+   Supabase sync.
 
+   The app keeps working exactly as before when signed out: everything lands
+   in localStorage. Signing in adds a second destination, so the browser stops
+   being the only copy and stops being the size limit.
+
+   Talking to PostgREST and GoTrue directly avoids pulling a bundler into a
+   project that deliberately has no build step. The anon key is public by
+   design; Row Level Security is what keeps one account out of another's rows.
+   ======================================================================= */
+const SB={url:null,anon:null,token:null,refresh:null,user:null,on:false,syncing:false,lastError:null};
+const SB_KEYS={'pkos:index':'index','pkos:knowledge':'knowledge','pkos:reviewlogs':'reviewlogs',
+ 'pkos:prefs':'prefs','pkos:stats':'stats'};
+const localMeta=()=>{try{return JSON.parse(localStorage.getItem('pkos:meta')||'{}');}catch(e){return {};}};
+const touchMeta=k=>{try{const m=localMeta();m[k]=now();localStorage.setItem('pkos:meta',JSON.stringify(m));}catch(e){}};
+
+async function sbInit(){
+ try{const r=await fetch('/api/config');const j=await r.json();
+  SB.url=j.supabaseUrl;SB.anon=j.supabaseAnonKey;
+  if(j.warning)console.warn(j.warning);}catch(e){}
+ try{const t=JSON.parse(localStorage.getItem('pkos:session')||'null');
+  if(t){SB.token=t.access_token;SB.refresh=t.refresh_token;SB.user=t.user;SB.on=Boolean(SB.url&&SB.anon);}}catch(e){}
+}
+function sbStore(j){
+ SB.token=j.access_token;SB.refresh=j.refresh_token;SB.user=j.user||SB.user;SB.on=true;
+ try{localStorage.setItem('pkos:session',JSON.stringify(
+  {access_token:SB.token,refresh_token:SB.refresh,user:SB.user}));}catch(e){}
+}
+function sbClear(){
+ SB.token=SB.refresh=SB.user=null;SB.on=false;
+ try{localStorage.removeItem('pkos:session');}catch(e){}
+}
+async function sbAuth(path,body){
+ const r=await fetch(`${SB.url}/auth/v1/${path}`,{method:'POST',
+  headers:{'Content-Type':'application/json',apikey:SB.anon},body:JSON.stringify(body)});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(j.error_description||j.msg||j.message||('auth '+r.status));
+ return j;
+}
+async function sbRefreshToken(){
+ if(!SB.refresh)return false;
+ try{sbStore(await sbAuth('token?grant_type=refresh_token',{refresh_token:SB.refresh}));return true;}
+ catch(e){sbClear();return false;}
+}
+async function sbRest(path,init={},retry=true){
+ const r=await fetch(SB.url+'/rest/v1/'+path,{...init,
+  headers:{'Content-Type':'application/json',apikey:SB.anon,
+   Authorization:'Bearer '+SB.token,...(init.headers||{})}});
+ if(r.status===401&&retry&&await sbRefreshToken())return sbRest(path,init,false);
+ return r;
+}
+async function sbSignIn(email,password,create){
+ if(!SB.url||!SB.anon)throw new Error('Supabase is not configured on the server');
+ const j=await sbAuth(create?'signup':'token?grant_type=password',{email,password});
+ if(create&&!j.access_token)throw new Error('Check your email to confirm the account, then sign in.');
+ sbStore(j);
+ await sbPull();
+}
+/* First contact on a device: take whichever side was written more recently,
+   per key. A fresh browser has no local timestamps, so it takes the server. */
+async function sbPull(){
+ if(!SB.on)return;
+ SB.syncing=true;paintUsage();
+ try{
+  const r=await sbRest('app_state?select=key,value,updated_at');
+  if(!r.ok)throw new Error('pull '+r.status);
+  const rows=await r.json();
+  const meta=localMeta();
+  for(const row of rows){
+   const localKey=Object.keys(SB_KEYS).find(k=>SB_KEYS[k]===row.key);
+   if(!localKey)continue;
+   const mine=meta[localKey];
+   if(mine&&mine>row.updated_at)continue;           // local is newer, keep it
+   if(localKey==='pkos:index')DB.index=row.value;
+   else if(localKey==='pkos:knowledge')Object.assign(K,row.value);
+   else if(localKey==='pkos:reviewlogs')DB.reviewlogs=row.value;
+   else if(localKey==='pkos:prefs')DB.prefs={...DEFAULT_PREFS,...row.value};
+   else if(localKey==='pkos:stats')DB.stats=row.value;
+   try{localStorage.setItem(localKey,JSON.stringify(row.value));}catch(e){}
+  }
+  SB.lastError=null;
+  knownCache={id:null,n:-1,count:0};
+  applyPrefs();
+ }catch(e){SB.lastError=e.message;}
+ SB.syncing=false;
+ render();
+}
+async function sbPushState(localKey,value){
+ if(!SB.on||!SB.user)return;
+ const key=SB_KEYS[localKey];if(!key)return;
+ const r=await sbRest('app_state',{method:'POST',
+  headers:{Prefer:'resolution=merge-duplicates'},
+  body:JSON.stringify({user_id:SB.user.id,key,value,updated_at:now()})});
+ if(!r.ok)SB.lastError='sync '+r.status;
+}
+async function sbPushDoc(id,content){
+ if(!SB.on||!SB.user)return;
+ const r=await sbRest('documents',{method:'POST',
+  headers:{Prefer:'resolution=merge-duplicates'},
+  body:JSON.stringify({user_id:SB.user.id,id,content,updated_at:now()})});
+ if(!r.ok)SB.lastError='sync '+r.status;
+}
+async function sbGetDoc(id){
+ if(!SB.on)return null;
+ const r=await sbRest(`documents?id=eq.${encodeURIComponent(id)}&select=content`);
+ if(!r.ok)return null;
+ const rows=await r.json();
+ return rows[0]?{id,content:rows[0].content}:null;
+}
+async function sbDeleteDoc(id){
+ if(!SB.on)return;
+ await sbRest(`documents?id=eq.${encodeURIComponent(id)}`,{method:'DELETE'});
+}
+
+let wt=null,dirty=new Set();
+function save(...keys){keys.forEach(k=>dirty.add(k));clearTimeout(wt);wt=setTimeout(flushWrites,300);}
+function flushWrites(){
+ if(wt){clearTimeout(wt);wt=null;}
+ const keys=[...dirty];dirty.clear();
+ keys.forEach(k=>store.set(k,DB[k]));
+}
+window.addEventListener('pagehide',flushWrites);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushWrites();});
+
+const SCHEMA=2;   // bump when the stored shape changes; migrations run in boot()
 const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'normal',lh:1.68,panel:true,newPerDay:10};
 const DB={index:{docs:[]},
- knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],reviewLogs:[]},
+ knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],writings:[]},
+ reviewlogs:[],
  tcache:{},stats:{apiCalls:0,cacheHits:0},prefs:{...DEFAULT_PREFS}};
 const K=DB.knowledge;
 const DOMAINS=['Major / Career','English / Liberal Arts','World / News / Investment','General Knowledge'];
@@ -402,6 +552,7 @@ The trade-off is not free. A thin representation carries less information, and a
 
 let state={view:'library',docId:null,panel:null,tab:'concepts',wordFilter:'all',hlFilter:'all',
  domain:'all',sort:'recent',query:'',revealed:false,testing:false,testQueue:[],
+ briefLoading:false,pickSec:new Set(),pickVocab:new Set(),
  qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
 
 const $=id=>document.getElementById(id);
@@ -409,11 +560,17 @@ const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
       $toolbar=$('toolbar'),$usage=$('usage'),$main=$('main'),$app=$('app');
 
 (async function boot(){
- const [ix,kn,tc,st,pf]=await Promise.all(['pkos:index','pkos:knowledge','pkos:tcache','pkos:stats','pkos:prefs'].map(store.get));
+ const [ix,kn,tc,st,pf,rl,bf]=await Promise.all(
+  ['pkos:index','pkos:knowledge','pkos:tcache','pkos:stats','pkos:prefs','pkos:reviewlogs','pkos:briefing'].map(store.get));
+ if(bf&&bf.fetchedFor===new Date().toISOString().slice(0,10))DB.briefing=bf;
  if(kn)Object.assign(K,kn);
+ /* Review logs used to sit inside the knowledge blob, which meant every
+    highlight re-serialised thousands of rows. They now live in their own key. */
+ DB.reviewlogs=rl||kn?.reviewLogs||[];
+ if(K.reviewLogs){delete K.reviewLogs;save('pkos:knowledge','pkos:reviewlogs');}
  if(tc)DB.tcache=tc; if(st)DB.stats=st;
  if(pf)DB.prefs={...DEFAULT_PREFS,...pf};
- if(!K.reviewLogs)K.reviewLogs=[];
+ if(!K.writings)K.writings=[];
  K.highlights.forEach(h=>{                         // migrate colour-era highlights
   if(!h.tags)h.tags=[];
   if(!h.kind)h.kind=K.vocabulary.some(v=>v.sourceHighlightId===h.id)?'word':'mark';});
@@ -447,25 +604,38 @@ function applyPrefs(){
 
 /* ---------- language service ---------- */
 const hash=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return 'h'+(h>>>0).toString(36);};
-let API_MODE=null;
+let API_MODE=null;            // 'server' | 'sandbox', latched only on proof
+const inflight=new Map();     // one request per identical lookup
+
 async function llm(mode,text,sentence,lang,key){
  if(key&&DB.tcache[key]){DB.stats.cacheHits++;save('pkos:stats');paintUsage();return{data:DB.tcache[key],cached:true};}
- let data=null;
- if(API_MODE!=='sandbox'){
-  let r=null;
-  try{r=await fetch('/api/lookup',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({mode,text,sentence,lang})});}catch(e){r=null;}
-  if(r&&r.ok){API_MODE='server';data=await r.json();}
-  else if(r&&(r.status===404||r.status===405)){API_MODE='sandbox';}
-  else if(r){const j=await r.json().catch(()=>({}));throw new Error(j.error||('server returned '+r.status));}
-  else if(API_MODE==='server'){throw new Error('Could not reach /api/lookup');}
-  else{API_MODE='sandbox';}
- }
- if(!data)data=await sandboxLLM(mode,text,sentence,lang);
- DB.stats.apiCalls++;
- if(key){DB.tcache[key]=data;const ks=Object.keys(DB.tcache);
-  if(ks.length>200)ks.slice(0,ks.length-200).forEach(k=>delete DB.tcache[k]);save('pkos:tcache');}
- save('pkos:stats');paintUsage();return{data,cached:false};
+ if(key&&inflight.has(key)){return{data:await inflight.get(key),cached:true};}
+ const job=(async()=>{
+  let data=null;
+  if(API_MODE!=='sandbox'){
+   let r=null,threw=false;
+   try{r=await fetch('/api/lookup',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode,text,sentence,lang})});}catch(e){threw=true;}
+   if(r&&r.ok){API_MODE='server';data=await r.json();}
+   else if(r&&(r.status===404||r.status===405)){API_MODE='sandbox';}   // no server function here
+   else if(r){const j=await r.json().catch(()=>({}));throw new Error(j.error||('server returned '+r.status));}
+   else if(threw&&API_MODE==='server'){throw new Error('Could not reach /api/lookup');}
+   // A transient network failure on the very first call must not permanently
+   // decide which route this session uses, so nothing is latched here.
+  }
+  if(!data){
+   try{data=await sandboxLLM(mode,text,sentence,lang);API_MODE='sandbox';}
+   catch(e){throw new Error(API_MODE==='sandbox'?e.message:'Could not reach /api/lookup');}
+  }
+  DB.stats.apiCalls++;
+  if(key){DB.tcache[key]=data;const ks=Object.keys(DB.tcache);
+   if(ks.length>200)ks.slice(0,ks.length-200).forEach(k=>delete DB.tcache[k]);save('pkos:tcache');}
+  save('pkos:stats');paintUsage();
+  return data;
+ })();
+ if(key)inflight.set(key,job);
+ try{return{data:await job,cached:false};}
+ finally{if(key)inflight.delete(key);}
 }
 /* preview-only path; the deployed site always goes through /api/lookup */
 const SB_SYS='You are a bilingual English-Korean reading assistant. Write meanings in Korean. Output raw JSON only.';
@@ -486,7 +656,15 @@ async function sandboxLLM(mode,text,sentence,lang){
 
 /* ---------- helpers ---------- */
 const docCache={};
-async function loadDoc(id){if(docCache[id])return docCache[id];const d=await store.get('pkos:doc:'+id);docCache[id]=d;return d;}
+async function loadDoc(id){
+ if(docCache[id])return docCache[id];
+ let d=await store.get('pkos:doc:'+id);
+ if((!d||!d.content)&&SB.on){                 // content lives on the server now
+  const remote=await sbGetDoc(id);
+  if(remote){d=remote;try{localStorage.setItem('pkos:doc:'+id,JSON.stringify(d));}catch(e){}}
+ }
+ docCache[id]=d;return d;
+}
 const meta=id=>DB.index.docs.find(d=>d.id===id);
 function sentenceAt(t,s,e){let a=s,b=e;const stop='.!?。\n';
  while(a>0&&!stop.includes(t[a-1]))a--;while(b<t.length&&!stop.includes(t[b]))b++;
@@ -504,9 +682,23 @@ function paintNav(){
  $nav.innerHTML=items.map(([k,l,ic,n])=>`<button class="navbtn" data-nav="${k}" aria-current="${state.view===k||(k==='library'&&state.view==='reader')}">
   ${svg(ic)}<span>${l}</span>${n===''?'':`<span class="n">${n}</span>`}</button>`).join('');
 }
+function fmtBytes(n){return n>1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';}
 function paintUsage(){
- $usage.innerHTML=`<div class="u"><span>API calls</span><b>${DB.stats.apiCalls}</b></div>
-  <div class="u"><span>Cached</span><b>${DB.stats.cacheHits}</b></div>
+ const used=storageBytes(),pct=Math.min(100,Math.round(used/5242880*100));
+ const col=storageFull&&!SB.on?'#FF3B30':pct>80?'#FF9500':'var(--blue)';
+ const acct=SB.on
+  ? `<button class="u" data-account style="width:100%;padding:2px 0">
+      <span style="color:var(--label2)">${SB.syncing?'Syncing…':'Synced'}</span>
+      <b style="color:${SB.lastError?'#FF9500':'#34C759'};font-size:11px">${esc((SB.user?.email||'account').split('@')[0])}</b></button>`
+  : `<button class="u" data-account style="width:100%;padding:2px 0">
+      <span style="color:var(--label2)">This device only</span>
+      <b style="color:var(--blue);font-size:11px">Sign in</b></button>`;
+ $usage.innerHTML=acct+
+  `<button class="u" data-data style="width:100%;padding:2px 0">
+    <span style="color:${storageFull&&!SB.on?'#FF3B30':'var(--label2)'}">Storage</span>
+    <b style="color:${pct>80?col:'var(--label)'}">${fmtBytes(used)} · ${pct}%</b></button>
+   <div style="height:3px;border-radius:99px;background:var(--fill2);overflow:hidden;margin:4px 0 2px">
+    <i style="display:block;height:100%;width:${Math.max(2,pct)}%;background:${col}"></i></div>
   <div class="themetog">${[['auto','Auto'],['light','Light'],['dark','Dark']].map(([k,l])=>
    `<button data-settheme="${k}" aria-current="${(DB.prefs.theme||'auto')===k}">${l}</button>`).join('')}</div>`;
 }
@@ -518,7 +710,8 @@ function render(){
  else if(state.view==='words')viewWords();
  else if(state.view==='knowledge')viewKnowledge();
  else if(state.view==='review')viewReview();
- else if(state.view==='today')viewToday();
+ else if(state.view==='today'){viewToday();
+  if(!DB.briefing&&!state.briefLoading)loadBriefing(false);}
  paintPanel();
 }
 function go(view,opts={}){
@@ -597,8 +790,18 @@ function viewLibrary(){
     <select class="tin" id="ndomain">${DOMAINS.map(x=>`<option>${x}</option>`).join('')}</select>
     <button class="btn" id="addbtn">Add</button></div></div></div>`;
 }
+/* Browser storage tops out around 5 MB, so a very large paste is worth a
+   warning before it silently eats the whole budget. */
+let bigWarned=null;
+function confirmBig(len){
+ if(bigWarned===len){bigWarned=null;return true;}
+ bigWarned=len;
+ toast(`That document is ${fmtBytes(len)}. Press Add again to confirm.`);
+ return false;
+}
 async function addDoc(title,author,content,domain){
  if(!content.trim())return toast('Nothing to add');
+ if(content.length>300000&&!confirmBig(content.length))return;
  const id=uid('doc');
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
   language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null});
@@ -622,6 +825,20 @@ function reanchor(docId,newText){
 
 /* ---------- Reader ---------- */
 let lastReaderDoc=null;
+/* Counting which saved words appear in a document is words x length. Doing it
+   on every redraw made highlighting a long document visibly slow, so the
+   result is memoised against the document and the size of the word list. */
+let knownCache={id:null,n:-1,count:0};
+function knownCount(docId,content){
+ if(knownCache.id===docId&&knownCache.n===K.vocabulary.length)return knownCache.count;
+ const lower=content.toLowerCase();
+ const tokens=new Set(lower.match(/[a-z][a-z'-]*/g)||[]);
+ const count=K.vocabulary.filter(v=>{
+  const w=String(v.word).toLowerCase();
+  return /^[a-z][a-z'-]*$/.test(w)?tokens.has(w):lower.includes(w);}).length;
+ knownCache={id:docId,n:K.vocabulary.length,count};
+ return count;
+}
 async function viewReader(){
  const m=meta(state.docId);if(!m){state.view='library';return render();}
  const d=await loadDoc(state.docId);$tb.textContent=m.title;
@@ -641,7 +858,7 @@ async function viewReader(){
     h.kind==='memo'?` data-i="${memoIdx[h.id]}"`:''}>${esc(b.text.slice(s-b.start,e-b.start))}</mark>`;cur=e;});
   if(cur<end)out+=esc(b.text.slice(cur-b.start));
   return `<p data-start="${b.start}">${out}</p>`;}).join('');
- const known=K.vocabulary.filter(v=>d.content.toLowerCase().includes(String(v.word).toLowerCase())).length;
+ const known=knownCount(m.id,d.content);
  const st=docStat(m);
  $view.innerHTML=`<div class="view reader">
   <div class="rhead">
@@ -805,8 +1022,8 @@ function paintPanel(){
     <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div></button>`).join('')}</div>`:''));
   return;}
  $panel.classList.add('open');
- const H={result:resultHTML,memo:memoHTML,compose:composeHTML,detail:detailHTML,
-          hl:hlHTML,docedit:docEditHTML,readset:readSetHTML,diag:diagHTML};
+ const H={result:resultHTML,memo:memoHTML,compose:composeHTML,detail:detailHTML,hl:hlHTML,
+          docedit:docEditHTML,readset:readSetHTML,diag:diagHTML,data:dataHTML,account:accountHTML};
  $panel.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
  const f=$panel.querySelector('textarea')||$panel.querySelector('input');if(f)f.focus();
 }
@@ -855,20 +1072,25 @@ function composeHTML(p){
 }
 function detailHTML(p){
  const o=p.item,t=p.kind,m=o.sourceDocumentId?meta(o.sourceDocumentId):null;
- return shell({vocabulary:'Word',concepts:'Concept',thoughts:'Thought',questions:'Question'}[t],`<div class="card">
+ return shell({vocabulary:'Word',concepts:'Concept',thoughts:'Thought',questions:'Question',writings:'Writing'}[t],`<div class="card">
   <p class="term">${esc(o.word||o.name||'')}</p>
   ${o.partOfSpeech?`<div class="pos">${esc(o.partOfSpeech)}</div>`:''}
   ${o.contextualMeaning?`<div class="f"><div class="k">In context</div><div class="v ko">${esc(o.contextualMeaning)}</div></div>`:''}
   ${o.meaning?`<div class="f"><div class="k">General</div><div class="v ko">${esc(o.meaning)}</div></div>`:''}
   ${o.definition?`<div class="f"><div class="k">Definition</div><div class="v ko">${esc(o.definition)}</div></div>`:''}
-  ${o.body?`<div class="f"><div class="v ko" style="white-space:pre-wrap">${esc(o.body)}</div></div>`:''}
+  ${o.prompt?`<div class="f"><div class="k">Prompt</div><div class="v">${esc(o.prompt)}</div></div>`:''}
+  ${o.body?`<div class="f"><div class="k">${t==='writings'?'Your draft':''}</div>
+   <div class="v ko" style="white-space:pre-wrap">${esc(o.body)}</div></div>`:''}
+  ${o.corrected?`<div class="f"><div class="k">Rewritten</div>
+   <div style="font-family:var(--serif);font-size:15.5px;line-height:1.6">${esc(o.corrected)}</div></div>`:''}
+  ${o.note&&t==='writings'?`<div class="f"><div class="k">Notes</div><div class="v">${esc(o.note)}</div></div>`:''}
   ${o.sourceSentence?`<div class="f"><div class="k">Sentence</div><div class="quote">${esc(o.sourceSentence)}</div></div>`:''}
   ${o.sourceParagraph&&o.sourceParagraph!==o.sourceSentence?`<div class="f"><div class="k">Paragraph</div>
     <div class="quote" style="border-color:var(--sep-strong);font-size:13px">${esc(o.sourceParagraph)}</div></div>`:''}
   ${o.exampleSentence?`<div class="f"><div class="k">Example</div><div class="v">${esc(o.exampleSentence)}</div></div>`:''}
   ${t==='vocabulary'?tagEditor('vocabulary',o):''}
   ${m?`<div class="f"><div class="k">Document</div><button class="btn plain sm" data-open="${m.id}" style="margin-left:-8px">${esc(m.title)}</button></div>`:''}
-  ${o.nextReviewAt?`<div class="f"><div class="k">Next review</div><div class="v">${o.nextReviewAt.slice(0,10)} · stage ${QSHORT[QTYPES[Math.min(3,o.stage||0)]]}</div></div>`:''}
+  ${o.nextReviewAt?`<div class="f"><div class="k">Next review</div><div class="v">${o.nextReviewAt.slice(0,10)} · stage ${QSHORT[QTYPES[Math.min(4,o.stage||0)]]}</div></div>`:''}
   <div class="acts"><button class="btn danger" data-del="${t}:${o.id}">Delete</button></div></div>`);
 }
 function hlHTML(p){
@@ -923,6 +1145,91 @@ function docEditHTML(p){
    <button class="btn sec sm" data-close>Cancel</button>
    <button class="btn danger" data-docdel="${m.id}">${state.confirmDel===m.id?'Tap again to delete':'Delete document'}</button></div></div>`);
 }
+/* Data ownership: everything can leave in one file, and come back. */
+function accountHTML(p){
+ if(SB.on)return shell('Account',`<div class="card">
+  <div class="f"><div class="k">Signed in as</div><div class="v">${esc(SB.user?.email||'')}</div></div>
+  <div class="f"><div class="k">Status</div><div class="v">
+   ${SB.syncing?'Syncing…':SB.lastError?esc('Last error: '+SB.lastError):'On the server as well as this device'}</div></div>
+  <div class="f"><div class="k">What this changes</div><div class="v" style="color:var(--label2);line-height:1.5">
+   Document text is stored on the server, so the browser size limit no longer applies and the same library opens on every device.</div></div>
+  <div class="acts">
+   <button class="btn sm" data-pull>Pull from server</button>
+   <button class="btn sec sm" data-pushall>Push everything up</button>
+   <button class="btn danger" data-signout>Sign out</button></div></div>`);
+ return shell('Account',`<div class="card">
+  ${p?.error?`<div class="err" style="margin-bottom:10px">${esc(p.error)}</div>`:''}
+  <div class="f"><div class="k">Email</div>
+   <input class="tin" id="sbemail" type="email" autocomplete="email" style="width:100%" value="${esc(p?.email||'')}"></div>
+  <div class="f"><div class="k">Password</div>
+   <input class="tin" id="sbpass" type="password" autocomplete="current-password" style="width:100%"></div>
+  <div class="acts">
+   <button class="btn sm" data-signin>Sign in</button>
+   <button class="btn sec sm" data-signup>Create account</button></div>
+  <p style="font-size:11.5px;color:var(--label3);margin:10px 0 0;line-height:1.5">
+   Until you sign in, everything stays in this browser only.</p></div>`);
+}
+function dataHTML(){
+ const used=storageBytes(),pct=Math.min(100,Math.round(used/5242880*100));
+ const docBytes=DB.index.docs.reduce((n,d)=>n+(d.chars||0),0);
+ return shell('Data',`<div class="card">
+  <div class="f"><div class="k">Browser storage</div>
+   <div class="v">${fmtBytes(used)} of roughly 5 MB (${pct}%)</div>
+   <div style="height:5px;border-radius:99px;background:var(--fill2);overflow:hidden;margin-top:6px">
+    <i style="display:block;height:100%;width:${pct}%;background:${pct>80?'#FF9500':'var(--blue)'}"></i></div>
+   ${storageFull?'<div class="err" style="margin-top:8px">Storage is full. Recent changes may not have been written. Export a backup, then delete a document you no longer need.</div>':''}
+  </div>
+  <div class="f"><div class="k">Contents</div><div class="v">
+   ${DB.index.docs.length} documents (${fmtBytes(docBytes)} of text) · ${K.vocabulary.length} words ·
+   ${K.highlights.length} marks · ${K.thoughts.length+K.questions.length} memos ·
+   ${DB.reviewlogs.length} review records</div></div>
+  <div class="f"><div class="k">Backup</div>
+   <div class="v" style="color:var(--label2);line-height:1.5">Everything lives in this browser until Supabase is connected. Clearing site data would erase it, so keep a copy.</div></div>
+  ${DB.index.docs.length?`<div class="f"><div class="k">Largest documents</div>
+   ${[...DB.index.docs].sort((a,b)=>(b.chars||0)-(a.chars||0)).slice(0,5).map(d=>
+    `<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13px">
+     <button class="btn plain sm" data-open="${d.id}" style="padding:0;text-align:left;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title)}</button>
+     <span style="color:var(--label3);font-variant-numeric:tabular-nums;flex:none">${fmtBytes(d.chars||0)}</span></div>`).join('')}
+   </div>`:''}
+  <div class="acts">
+   <button class="btn sm" data-export>Export everything</button>
+   <label class="btn sec sm" style="cursor:pointer">Import<input type="file" id="importfile" accept=".json,application/json" hidden></label>
+  </div></div>`);
+}
+async function exportAll(){
+ const docs={};
+ for(const d of DB.index.docs)docs[d.id]=(await loadDoc(d.id))?.content||'';
+ const payload={app:'MyDrive',schema:SCHEMA,exportedAt:now(),
+  index:DB.index,docs,knowledge:K,reviewlogs:DB.reviewlogs,prefs:DB.prefs};
+ const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);
+ a.download=`mydrive-backup-${new Date().toISOString().slice(0,10)}.json`;
+ document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+/* Import merges by id and never overwrites, so restoring an old backup on top
+   of newer work cannot destroy the newer work. */
+async function importAll(text){
+ const d=JSON.parse(text);
+ if(d.app!=='MyDrive')throw new Error('Not a MyDrive backup file');
+ let docs=0,items=0;
+ const have=new Set(DB.index.docs.map(x=>x.id));
+ for(const doc of d.index?.docs||[]){
+  if(have.has(doc.id))continue;
+  DB.index.docs.push(doc);
+  await store.set('pkos:doc:'+doc.id,{id:doc.id,content:(d.docs||{})[doc.id]||''});
+  docs++;}
+ ['highlights','vocabulary','concepts','thoughts','questions'].forEach(k=>{
+  const ids=new Set(K[k].map(x=>x.id));
+  (d.knowledge?.[k]||[]).forEach(x=>{if(!ids.has(x.id)){K[k].push(x);items++;}});});
+ const lids=new Set(DB.reviewlogs.map(x=>x.id));
+ (d.reviewlogs||[]).forEach(x=>{if(!lids.has(x.id))DB.reviewlogs.push(x);});
+ knownCache={id:null,n:-1,count:0};
+ save('pkos:index','pkos:knowledge','pkos:reviewlogs');
+ return{docs,items};
+}
+
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
   <div class="f"><div class="k">Route</div><div class="v">${esc(API_MODE||'unknown')}</div></div>
@@ -933,8 +1240,9 @@ function diagHTML(p){
 
 /* ---------- Words: SM-2 scheduling, escalating question types ---------- */
 const QTYPES=['choice','recall','cloze','reverse'];
-const QLABEL={choice:'Pick the meaning',recall:'What does it mean?',cloze:'Fill the blank',reverse:'Say it in English'};
-const QSHORT={choice:'Choice',recall:'Recall',cloze:'Cloze',reverse:'Reverse'};
+const QLABEL={choice:'Pick the meaning',recall:'What does it mean?',cloze:'Fill the blank',
+ reverse:'Say it in English',produce:'Use it in a sentence'};
+const QSHORT={choice:'Choice',recall:'Recall',cloze:'Cloze',reverse:'Reverse',produce:'Write'};
 const newPerDay=()=>DB.prefs.newPerDay||10;
 function clozeOf(v){
  const sent=v.sourceSentence||v.exampleSentence||'';
@@ -943,7 +1251,7 @@ function clozeOf(v){
  return i<0?null:sent.slice(0,i)+'______'+sent.slice(i+String(v.word).length);
 }
 function qtypeFor(v){
- let t=QTYPES[Math.min(3,v.stage||0)];
+ let t=QTYPES[Math.min(4,v.stage||0)];
  if(t==='cloze'&&!clozeOf(v))t='recall';
  if(t==='choice'&&K.vocabulary.filter(x=>x.contextualMeaning||x.meaning).length<4)t='recall';
  if(t==='reverse'&&!(v.contextualMeaning||v.meaning))t='recall';
@@ -979,15 +1287,16 @@ function schedule(v,g){
   const base=v.interval||((v.lapses||0)?1:(v.reps<=1?1:3));
   v.interval=Math.max((v.interval||0)+1,Math.round(base*(g===1?1.2:g===2?v.ease:v.ease*1.3)));
   v.nextReviewAt=dayjs(v.interval);v.reviewStatus='review';
-  if(g>=2)v.stage=Math.min(3,(v.stage||0)+1);
+  if(g>=2)v.stage=Math.min(4,(v.stage||0)+1);
  }
  v.lastReviewedAt=now();v.updatedAt=now();
- K.reviewLogs.push({id:uid('rl'),itemId:v.id,itemType:'vocabulary',grade:g,
+ DB.reviewlogs.push({id:uid('rl'),itemId:v.id,itemType:'vocabulary',grade:g,
   mode:state.qtype||'recall',intervalAfter:v.interval,at:now()});
- if(K.reviewLogs.length>2000)K.reviewLogs.splice(0,K.reviewLogs.length-2000);
- save('pkos:knowledge','pkos:stats');
+ if(DB.reviewlogs.length>3000)DB.reviewlogs.splice(0,DB.reviewlogs.length-3000);
+ save('pkos:knowledge','pkos:stats','pkos:reviewlogs');
 }
-function nextCard(){state.revealed=false;state.qtype=null;state.choices=null;state.picked=null;state.clozeOk=null;}
+function nextCard(){state.revealed=false;state.qtype=null;state.choices=null;state.picked=null;
+ state.clozeOk=null;state.critique=null;state.produced=null;state.checking=false;}
 function gradeWord(g){
  const v=state.testQueue.shift();if(!v)return;
  schedule(v,g);
@@ -1058,6 +1367,23 @@ function viewTest(){
     :`<p class="rvterm" style="font-size:29px">${esc(v.word)}</p>
       <div style="color:var(--label2);font-size:14px">${esc(meaning)}</div>
       <div style="font-size:12.5px;color:${state.clozeOk?'#34C759':'var(--label3)'};margin-top:6px">${state.clozeOk?'Correct':'Not quite'}</div>${grades}`}`;
+ }else if(type==='produce'){
+  const f=state.critique;
+  card=`<p class="rvterm">${esc(v.word)}</p>
+   <div style="color:var(--label2);font-size:13.5px;margin-top:4px">${esc(meaning)}</div>
+   ${f?`<div class="f" style="text-align:left;margin-top:18px">
+      <div class="k">You wrote</div><div class="quote">${esc(state.produced||'')}</div></div>
+     <div class="f" style="text-align:left"><div class="k">${f.ok?'Natural already':'A native writer would put'}</div>
+      <div style="font-family:var(--serif);font-size:17px;line-height:1.5">${esc(f.corrected||'')}</div></div>
+     ${f.note?`<div class="f" style="text-align:left"><div class="k">Why</div>
+      <div class="v" style="font-size:13.5px">${esc(f.note)}</div></div>`:''}
+     ${f.why?`<div class="f" style="text-align:left"><div class="k">Carry forward</div>
+      <div class="v" style="font-size:13.5px">${esc(f.why)}</div></div>`:''}${grades}`
+    :`<textarea class="tin" id="prodin" style="width:100%;min-height:82px;margin-top:16px;line-height:1.5"
+       placeholder="Write one sentence using it"></textarea>
+      <div class="flexrow" style="justify-content:center">
+       <button class="btn" data-produce ${state.checking?'disabled':''}>${state.checking?'Checking…':'Check'}</button>
+       <button class="btn sec" data-skipprod>Skip</button></div>`}`;
  }else{
   card=`<div style="font-family:var(--serif);font-size:21px;line-height:1.4">${esc(meaning)}</div>
    ${state.revealed?`<p class="rvterm" style="margin-top:14px">${esc(v.word)}</p>
@@ -1076,8 +1402,9 @@ function viewTest(){
 function viewKnowledge(){
  $tb.textContent='Knowledge';
  const tabs=[['concepts','Concepts',K.concepts.length],['thoughts','Thoughts',K.thoughts.length],
-  ['questions','Questions',K.questions.length],['highlights','Marks',K.highlights.length]];
- if(!['concepts','thoughts','questions','highlights'].includes(state.tab))state.tab='concepts';
+  ['questions','Questions',K.questions.length],['writings','Writing',(K.writings||[]).length],
+  ['highlights','Marks',K.highlights.length]];
+ if(!['concepts','thoughts','questions','writings','highlights'].includes(state.tab))state.tab='concepts';
  const isHl=state.tab==='highlights';
  let src=[...(K[state.tab]||[])].reverse();
  if(isHl&&state.hlFilter!=='all')src=src.filter(h=>(h.kind||'mark')===state.hlFilter);
@@ -1087,8 +1414,8 @@ function viewKnowledge(){
    <span class="dot ${k}"></span>${KINDLABEL[k]}<span class="n">${K.highlights.filter(h=>(h.kind||'mark')===k).length}</span></button>`).join('')}</div>`:'';
  const rows=src.map(o=>{
   const m=o.sourceDocumentId||o.documentId?meta(o.sourceDocumentId||o.documentId):null;
-  const title=o.name||(o.body?o.body.slice(0,70):'')||o.selectedText?.slice(0,70)||'';
-  const sub=o.definition||(isHl?(o.note||o.translation||''):o.sourceSentence)||'';
+  const title=o.name||(o.prompt?o.prompt.slice(0,70):'')||(o.body?o.body.slice(0,70):'')||o.selectedText?.slice(0,70)||'';
+  const sub=o.definition||(isHl?(o.note||o.translation||''):(o.corrected||o.body||o.sourceSentence))||'';
   return `<button class="item" data-item="${state.tab}:${o.id}">
    <h4>${esc(title)}</h4>${sub?`<div class="b">${esc(sub)}</div>`:''}
    <div class="m">${isHl?`<span class="badge ${o.kind||'mark'}">${KINDLABEL[o.kind||'mark']}</span>`:''}
@@ -1122,21 +1449,135 @@ function gradeConcept(g){
  it.nextReviewAt=dayjs(it.interval);it.updatedAt=now();
  save('pkos:knowledge');state.revealed=false;render();
 }
+/* ---------- Today ----------
+   The daily order of work, top to bottom: read the briefing, choose which of
+   today's sections are worth keeping, take the words it already defines, sit
+   the word test, then carry on with whatever was left unfinished.
+
+   Nothing from the feed is stored unless it is ticked. That is deliberate: a
+   daily feed grows without limit and most of it is read once.
+   -------------------------------------------------------------------------- */
+async function loadBriefing(force){
+ const today=new Date().toISOString().slice(0,10);
+ if(!force&&DB.briefing&&DB.briefing.fetchedFor===today)return;
+ state.briefLoading=true;render();
+ try{const r=await fetch('/api/briefing');DB.briefing={...await r.json(),fetchedFor:today};}
+ catch(e){DB.briefing={error:'Could not reach /api/briefing',fetchedFor:today};}
+ state.briefLoading=false;
+ store.set('pkos:briefing',DB.briefing);
+ render();
+}
+function briefingCard(){
+ const b=DB.briefing;
+ if(state.briefLoading)return `<div class="card"><span class="spin"></span>Fetching today's briefing…</div>`;
+ if(!b)return `<div class="empty" style="padding:18px"><button class="btn sm" data-brief>Load today's briefing</button></div>`;
+ if(b.configured===false)return `<div class="card"><div class="f">
+   <div class="k">Notion not connected</div><div class="v">${esc(b.hint||'')}</div></div></div>`;
+ if(b.error)return `<div class="err">${esc(b.error)}</div>
+   <div class="flexrow"><button class="btn sec sm" data-brief>Try again</button></div>`;
+ if(b.empty)return `<div class="card"><div class="v">${esc(b.hint||'Nothing found')}</div></div>`;
+
+ const secs=(b.sections||[]).map(x=>`<button class="item" data-sec="${x.id}">
+   <div style="display:flex;gap:10px;align-items:flex-start">
+    <span class="tick ${state.pickSec.has(x.id)?'on':''}">${state.pickSec.has(x.id)?'✓':''}</span>
+    <span style="flex:1;min-width:0"><h4>${esc(x.title)}</h4>
+     <div class="b">${esc(x.text.slice(0,150))}</div>
+     <div class="m"><span>${Math.max(1,Math.round(x.chars/1024))} KB</span></div></span></div></button>`).join('');
+
+ const fresh=(b.vocab||[]).filter(v=>!K.vocabulary.some(x=>String(x.word).toLowerCase()===v.word.toLowerCase()));
+ const vocab=fresh.map((v,i)=>`<button class="item" data-voc="${i}">
+   <div style="display:flex;gap:10px;align-items:flex-start">
+    <span class="tick ${state.pickVocab.has(i)?'on':''}">${state.pickVocab.has(i)?'✓':''}</span>
+    <span style="flex:1;min-width:0"><h4>${esc(v.word)}</h4>
+     <div class="b">${esc(v.meaning)}</div></span></div></button>`).join('');
+
+ return `<div class="card">
+   <div class="flexrow" style="margin:0 0 10px;justify-content:space-between">
+    <strong style="font-size:14.5px">${esc(b.title||'Briefing')}</strong>
+    <button class="btn sec sm" data-brief>Refresh</button></div>
+   <div class="v" style="font-size:14.5px;line-height:1.6">${esc(b.summary||'')}</div>
+   ${b.url?`<div style="margin-top:10px"><a class="btn plain sm" href="${esc(b.url)}" target="_blank" rel="noopener" style="margin-left:-8px">Open in Notion</a></div>`:''}
+  </div>
+  <h3 class="sec">Sections<span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${(b.sections||[]).length}</span></h3>
+  <div class="list">${secs||'<div class="item"><div class="b">No sections found</div></div>'}</div>
+  <div class="flexrow">
+   <button class="btn sm" data-keepsec ${state.pickSec.size?'':'disabled'}>Keep ${state.pickSec.size||''} to Library</button>
+   <span style="font-size:12px;color:var(--label3)">Unticked sections are never stored</span></div>
+  ${vocab?`<h3 class="sec">Words from the briefing
+    <span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${fresh.length} new</span></h3>
+   <div class="list">${vocab}</div>
+   <div class="flexrow">
+    <button class="btn sm" data-keepvoc ${state.pickVocab.size?'':'disabled'}>Add ${state.pickVocab.size||''} to Words</button>
+    <span style="font-size:12px;color:var(--label3)">Already defined, so no lookups are spent</span></div>`
+   :`<h3 class="sec">Words from the briefing</h3><div class="empty">All of today's words are already saved</div>`}`;
+}
+/* Daily writing. The prompt comes from what was actually read today and the
+   constraint from what was actually saved, so there is never a blank page and
+   the words get used rather than only collected. */
+function todayPrompt(){
+ const b=DB.briefing;
+ if(b&&b.sections&&b.sections.length){
+  const i=new Date().getDate()%b.sections.length;
+  return `On today's briefing — ${b.sections[i].title}: what follows from it, and what do you doubt?`;}
+ const t=[...K.thoughts].slice(-1)[0];
+ if(t)return 'Take your last memo further, in English: '+t.body.slice(0,90);
+ const d=DB.index.docs.find(x=>x.progress>.02);
+ return d?`What is the main claim of "${d.title}", and do you accept it?`
+        :'What did you read today, and what changed your mind?';
+}
+function writeCard(){
+ const today=new Date().toISOString().slice(0,10);
+ const done=(K.writings||[]).filter(w=>w.createdAt.slice(0,10)===today).length;
+ const must=K.vocabulary.filter(v=>v.createdAt.slice(0,10)===today).slice(0,3);
+ const f=state.essay;
+ if(f)return `<div class="card">
+  <div class="f"><div class="k">You wrote</div><div class="quote">${esc(state.essayText||'')}</div></div>
+  <div class="f"><div class="k">Rewritten</div>
+   <div style="font-family:var(--serif);font-size:16.5px;line-height:1.6">${esc(f.corrected||'')}</div></div>
+  ${f.note?`<div class="f"><div class="k">Patterns to watch</div><div class="v">${esc(f.note)}</div></div>`:''}
+  ${f.good?`<div class="f"><div class="k">Done well</div><div class="v">${esc(f.good)}</div></div>`:''}
+  ${f.why?`<div class="f"><div class="k">Carry forward</div><div class="v">${esc(f.why)}</div></div>`:''}
+  <div class="acts"><button class="btn sm" data-essaysave>Keep it</button>
+   <button class="btn sec sm" data-essayreset>Write another</button></div></div>`;
+ return `<div class="card">
+  <div class="f"><div class="k">Prompt</div>
+   <div class="v" style="font-size:14.5px;line-height:1.55">${esc(todayPrompt())}</div></div>
+  ${must.length?`<div class="f"><div class="k">Use at least one</div>
+   <div class="tagrow">${must.map(v=>`<span class="tg">${esc(v.word)}</span>`).join('')}</div></div>`:''}
+  <textarea class="tin" id="essayin" style="width:100%;min-height:110px;line-height:1.55"
+   placeholder="Three to five sentences in English">${esc(state.essayText||'')}</textarea>
+  <div class="acts">
+   <button class="btn sm" data-essay ${state.checking?'disabled':''}>${state.checking?'Checking…':'Get feedback'}</button>
+   <span style="font-size:12px;color:var(--label3)">${done?done+' kept today':'Nothing written today yet'}</span>
+  </div></div>`;
+}
 function viewToday(){
  $tb.textContent='Today';
- const t=new Date().toISOString().slice(0,10),c=a=>a.filter(x=>x.createdAt.slice(0,10)===t).length;
- const reading=DB.index.docs.filter(d=>d.progress>.02&&d.progress<.97);
- const qs=K.questions.filter(q=>q.status!=='Answered').slice(-5).reverse();
- $view.innerHTML=`<div class="view"><div class="largetitle"><h1>Today</h1></div>
-  <div class="stats">${[['Words',c(K.vocabulary)],['Memos',c(K.thoughts)+c(K.questions)],
-   ['Highlights',c(K.highlights)],['Due',dueWords().length+dueConcepts().length]].map(([l,n])=>
-   `<div class="stat"><div class="v">${n}</div><div class="l">${l}</div></div>`).join('')}</div>
+ const session=buildSession();
+ const reading=DB.index.docs.filter(d=>d.progress>.02&&d.progress<.97)
+  .sort((a,b)=>String(b.lastReadAt||'').localeCompare(String(a.lastReadAt||'')));
+ const qs=K.questions.filter(q=>q.status!=='Answered').slice(-4).reverse();
+ $view.innerHTML=`<div class="view">
+  <div class="largetitle"><h1>Today</h1><span class="c">${new Date().toISOString().slice(5,10)}</span></div>
+  <h3 class="sec" style="margin-top:4px">Briefing</h3>
+  ${briefingCard()}
+  <h3 class="sec">Word test</h3>
+  ${K.vocabulary.length?`<div class="card">
+    <div class="flexrow" style="margin:0;justify-content:space-between;align-items:center">
+     <span><b style="font-size:23px;font-variant-numeric:tabular-nums">${session.length}</b>
+      <span style="color:var(--label2);font-size:13px;margin-left:7px">due now · ${K.vocabulary.length} saved</span></span>
+     ${session.length?'<button class="btn" data-test>Start test</button>':'<span style="font-size:13px;color:var(--label3)">Nothing due</span>'}</div></div>`
+  :'<div class="empty">Save a few words first</div>'}
+  <h3 class="sec">Write</h3>
+  ${writeCard()}
   <h3 class="sec">Continue reading</h3>
   ${reading.length?`<div class="list">${reading.map(docRow).join('')}</div>`:'<div class="empty">Nothing in progress</div>'}
-  <h3 class="sec">Open questions</h3>
-  ${qs.length?`<div class="list">${qs.map(q=>`<button class="item" data-item="questions:${q.id}">
-   <h4>${esc(q.body.slice(0,90))}</h4></button>`).join('')}</div>`:'<div class="empty">None</div>'}</div>`;
+  ${qs.length?`<h3 class="sec">Open questions</h3>
+   <div class="list">${qs.map(q=>`<button class="item" data-item="questions:${q.id}">
+    <h4>${esc(q.body.slice(0,90))}</h4></button>`).join('')}</div>`:''}
+  </div>`;
 }
+
 function viewSearch(){
  const q=state.query.toLowerCase(),hit=(...f)=>f.filter(Boolean).join(' ').toLowerCase().includes(q);
  $tb.textContent='Search';
@@ -1146,6 +1587,7 @@ function viewSearch(){
   ['Concepts',K.concepts.filter(c=>hit(c.name,c.definition)),c=>({t:c.name,s:c.definition,item:'concepts:'+c.id})],
   ['Thoughts',K.thoughts.filter(x=>hit(x.body)),x=>({t:x.body.slice(0,70),s:'',item:'thoughts:'+x.id})],
   ['Questions',K.questions.filter(x=>hit(x.body)),x=>({t:x.body.slice(0,70),s:x.status,item:'questions:'+x.id})],
+  ['Writing',(K.writings||[]).filter(w=>hit(w.body,w.corrected,w.prompt)),w=>({t:(w.prompt||w.body).slice(0,70),s:w.corrected,item:'writings:'+w.id})],
   ['Marks',K.highlights.filter(h=>hit(h.selectedText,h.note,(h.tags||[]).join(' '))),h=>({t:h.selectedText.slice(0,70),s:meta(h.documentId)?.title,item:'highlights:'+h.id})]];
  const total=g.reduce((n,[,l])=>n+l.length,0);
  $view.innerHTML=`<div class="view"><div class="largetitle"><h1>${esc(state.query)}</h1><span class="c">${total}</span></div>
@@ -1174,6 +1616,82 @@ document.addEventListener('click',async e=>{
  if(T.closest('#panelbtn')){
   if(window.innerWidth<=1120){$panel.classList.toggle('open');return;}
   DB.prefs.panel=DB.prefs.panel===false;applyPrefs();store.set('pkos:prefs',DB.prefs);return;}
+ if(T.closest('[data-produce]')){
+  const v=state.testQueue[0],txt=($('prodin')?.value||'').trim();
+  if(!txt)return toast('Write a sentence first');
+  state.produced=txt;state.checking=true;render();
+  try{const{data}=await llm('critique',txt,v.word,'en',hash('crit|'+v.word+'|'+txt));
+   state.critique=data;}
+  catch(e){state.critique={ok:false,corrected:txt,note:'Could not check: '+e.message};}
+  state.checking=false;
+  const v2=state.testQueue[0];
+  if(v2&&state.critique?.corrected)v2.userExample=state.critique.corrected;
+  save('pkos:knowledge');return render();}
+ if(T.closest('[data-skipprod]')){state.qtype='recall';return render();}
+ if(T.closest('[data-essay]')){
+  const txt=($('essayin')?.value||'').trim();
+  if(txt.length<20)return toast('Write a little more');
+  state.essayText=txt;state.checking=true;render();
+  try{const{data}=await llm('essay',txt,todayPrompt(),'en',hash('essay|'+txt));
+   state.essay=data;}
+  catch(e){state.essay={corrected:txt,note:'Could not check: '+e.message};}
+  state.checking=false;return render();}
+ if(T.closest('[data-essaysave]')){
+  K.writings.push({id:uid('w'),prompt:todayPrompt(),body:state.essayText||'',
+   corrected:state.essay?.corrected||'',note:state.essay?.note||'',
+   createdAt:now(),updatedAt:now(),origin:'user'});
+  state.essay=null;state.essayText='';save('pkos:knowledge');render();return toast('Kept');}
+ if(T.closest('[data-essayreset]')){state.essay=null;state.essayText='';return render();}
+ if(T.closest('[data-account]')){state.panel={type:'account'};return paintPanel();}
+ const si=T.closest('[data-signin]')||T.closest('[data-signup]');
+ if(si){
+  const email=($('sbemail')?.value||'').trim(),pw=$('sbpass')?.value||'';
+  if(!email||!pw)return toast('Email and password required');
+  try{await sbSignIn(email,pw,si.hasAttribute('data-signup'));
+   state.panel=null;render();return toast('Signed in');}
+  catch(err){state.panel={type:'account',email,error:err.message};return paintPanel();}}
+ if(T.closest('[data-signout]')){sbClear();state.panel=null;render();return toast('Signed out');}
+ if(T.closest('[data-pull]')){await sbPull();return toast('Pulled from server');}
+ if(T.closest('[data-pushall]')){
+  toast('Pushing…');
+  const map={'pkos:index':DB.index,'pkos:knowledge':K,'pkos:reviewlogs':DB.reviewlogs,
+             'pkos:prefs':DB.prefs,'pkos:stats':DB.stats};
+  for(const k of Object.keys(map))await sbPushState(k,map[k]);
+  for(const d of DB.index.docs){const c=await loadDoc(d.id);await sbPushDoc(d.id,c?.content||'');}
+  render();return toast('Everything pushed');}
+ if(T.closest('[data-brief]')){await loadBriefing(true);return;}
+ const sc=T.closest('[data-sec]');
+ if(sc){const id=sc.dataset.sec;
+  state.pickSec.has(id)?state.pickSec.delete(id):state.pickSec.add(id);return render();}
+ const vc=T.closest('[data-voc]');
+ if(vc){const i=+vc.dataset.voc;
+  state.pickVocab.has(i)?state.pickVocab.delete(i):state.pickVocab.add(i);return render();}
+ if(T.closest('[data-keepsec]')){
+  const b=DB.briefing||{};let n=0;
+  for(const x of (b.sections||[])){
+   if(!state.pickSec.has(x.id))continue;
+   const id=uid('doc');
+   DB.index.docs.unshift({id,title:`${b.date||''} ${x.title}`.trim(),author:'Daily Briefing',
+    domain:'World / News / Investment',language:'en',chars:x.text.length,progress:0,
+    createdAt:now(),lastReadAt:null});
+   await store.set('pkos:doc:'+id,{id,content:x.text});docCache[id]={id,content:x.text};n++;}
+  state.pickSec.clear();save('pkos:index');render();return toast(`Kept ${n} to Library`);}
+ if(T.closest('[data-keepvoc]')){
+  const b=DB.briefing||{};
+  const fresh=(b.vocab||[]).filter(v=>!K.vocabulary.some(x=>String(x.word).toLowerCase()===v.word.toLowerCase()));
+  let n=0;
+  fresh.forEach((v,i)=>{
+   if(!state.pickVocab.has(i))return;
+   K.vocabulary.push({id:uid('vocab'),word:v.word,language:'en',meaning:v.meaning,
+    contextualMeaning:v.meaning,partOfSpeech:'',pronunciation:'',exampleSentence:'',userExample:'',
+    tags:['briefing'],sourceDocumentId:null,sourceHighlightId:null,
+    sourceSentence:v.section?`From the ${v.section} section of ${b.title||'the briefing'}.`:'',
+    difficulty:0,reviewStatus:'new',interval:0,ease:2.5,reps:0,lapses:0,stage:0,
+    nextReviewAt:dayjs(1),createdAt:now(),updatedAt:now(),origin:'assisted'});n++;});
+  state.pickVocab.clear();knownCache={id:null,n:-1,count:0};
+  save('pkos:knowledge');render();return toast(`Added ${n} words`);}
+ if(T.closest('[data-data]')){state.panel={type:'data'};return paintPanel();}
+ if(T.closest('[data-export]')){await exportAll();return toast('Backup downloaded');}
  if(T.closest('[data-readset]')){state.panel={type:'readset'};return paintPanel();}
  const rd=T.closest('[data-read]');
  if(rd){DB.prefs.read=Math.max(13,Math.min(34,(DB.prefs.read||19)+(rd.dataset.read==='+'?1:-1)));
@@ -1206,9 +1724,16 @@ document.addEventListener('click',async e=>{
  const dd=T.closest('[data-docdel]');
  if(dd){const id=dd.dataset.docdel;
   if(state.confirmDel!==id){state.confirmDel=id;return paintPanel();}
+  const gone=new Set(K.highlights.filter(h=>h.documentId===id).map(h=>h.id));
   DB.index.docs=DB.index.docs.filter(d=>d.id!==id);
   K.highlights=K.highlights.filter(h=>h.documentId!==id);
-  delete docCache[id];save('pkos:index','pkos:knowledge');
+  // words and memos survive their document, but must not keep pointing at it
+  ['vocabulary','concepts','thoughts','questions'].forEach(k=>K[k].forEach(o=>{
+   if(o.sourceDocumentId===id)o.sourceDocumentId=null;
+   if(gone.has(o.sourceHighlightId))o.sourceHighlightId=null;}));
+  delete docCache[id];knownCache={id:null,n:-1,count:0};
+  try{localStorage.removeItem('pkos:doc:'+id);}catch(e){}
+  save('pkos:index','pkos:knowledge');
   state.confirmDel=null;state.panel=null;return go('library');}
 
  const it=T.closest('[data-item]');
@@ -1332,6 +1857,13 @@ document.addEventListener('change',e=>{
   DB.prefs.read=Math.max(13,Math.min(34,+e.target.value||19));applyPrefs();store.set('pkos:prefs',DB.prefs);return;}
  if(e.target.id==='newnum'){
   DB.prefs.newPerDay=Math.max(1,Math.min(60,+e.target.value||10));store.set('pkos:prefs',DB.prefs);return;}
+ if(e.target.id==='importfile'){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=async()=>{try{const res=await importAll(r.result);
+    render();toast(`Imported ${res.docs} documents, ${res.items} items`);}
+   catch(err){toast('Import failed: '+err.message);}};
+  r.readAsText(f);return;}
  if(e.target.id!=='file')return;
  const f=e.target.files[0];if(!f)return;
  const r=new FileReader();
