@@ -16,6 +16,7 @@
  *                     which models the key can actually reach.
  */
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TEXT = 6000;      // cost guard (writing feedback needs more room)
 const MAX_BRIEFING = 24000; // a briefing is long by nature
 const MAX_SENTENCE = 1200;
@@ -131,8 +132,11 @@ const providers = {
       'gemini-2.5-flash-lite',
     ].filter(Boolean);
 
-    let lastError;
-    for (const model of candidates) {
+    let lastError, waited = false;
+    // The same model twice, then progressively lighter ones: a busy model is
+    // usually only busy for a moment.
+    const plan = [candidates[0], ...candidates];
+    for (const model of plan) {
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
@@ -168,6 +172,13 @@ const providers = {
       }
 
       const body = await r.text();
+      // 503 means the model is busy, not that anything is wrong. Waiting once
+      // and then trying a lighter model recovers almost every time.
+      if (r.status === 503 || r.status === 500) {
+        if (!waited) { waited = true; await sleep(1200); lastError = new Error(`${model} busy`); }
+        else lastError = new Error(`${model} busy`);
+        continue;
+      }
       if (r.status === 429) {
         throw new Error('무료 사용량 한도에 걸렸습니다. 잠시 후 다시 시도하세요.');
       }
@@ -180,7 +191,11 @@ const providers = {
       }
       throw new Error(`Gemini ${r.status}: ${body.slice(0, 180)}`);
     }
-    throw lastError || new Error('No usable Gemini model');
+    throw new Error(
+      lastError && /busy/.test(lastError.message)
+        ? '모델이 혼잡합니다. 잠시 후 다시 시도하세요.'
+        : lastError?.message || 'No usable Gemini model'
+    );
   },
 
   async anthropic({ system, prompt }) {
