@@ -498,20 +498,28 @@ async function sbPull(){
  SB.syncing=false;
  render();
 }
+/* A status code alone is not actionable; PostgREST explains itself in the body. */
+async function sbWhy(r,what){
+ let detail='';
+ try{const j=await r.json();detail=j.message||j.hint||j.details||'';}catch(e){}
+ return `${what} ${r.status}${detail?': '+detail:''}`;
+}
 async function sbPushState(localKey,value){
  if(!SB.on||!SB.user)return;
  const key=SB_KEYS[localKey];if(!key)return;
- const r=await sbRest('app_state',{method:'POST',
-  headers:{Prefer:'resolution=merge-duplicates'},
-  body:JSON.stringify({user_id:SB.user.id,key,value,updated_at:now()})});
- if(!r.ok)SB.lastError='sync '+r.status;
+ // Composite primary key, so the conflict target is stated explicitly rather
+ // than left for PostgREST to infer.
+ const r=await sbRest('app_state?on_conflict=user_id,key',{method:'POST',
+  headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+  body:JSON.stringify({user_id:SB.user.id,key,value})});
+ if(!r.ok)SB.lastError=await sbWhy(r,'state '+key);
 }
 async function sbPushDoc(id,content){
  if(!SB.on||!SB.user)return;
- const r=await sbRest('documents',{method:'POST',
-  headers:{Prefer:'resolution=merge-duplicates'},
-  body:JSON.stringify({user_id:SB.user.id,id,content,updated_at:now()})});
- if(!r.ok)SB.lastError='sync '+r.status;
+ const r=await sbRest('documents?on_conflict=user_id,id',{method:'POST',
+  headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+  body:JSON.stringify({user_id:SB.user.id,id,content})});
+ if(!r.ok)SB.lastError=await sbWhy(r,'document');
 }
 async function sbGetDoc(id){
  if(!SB.on)return null;
@@ -562,7 +570,7 @@ The trade-off is not free. A thin representation carries less information, and a
 
 기록되지 않은 판단은 시간이 지나면 소실된다. 반년 뒤의 나는 그때의 제약 조건을 기억하지 못하고, 결론만 남은 코드를 보며 왜 이렇게 했는지 되묻게 된다. 판단의 근거를 남기는 일은 문서화가 아니라 미래의 의사결정 비용을 낮추는 투자다.`}];
 
-let state={view:'library',docId:null,panel:null,tab:'concepts',wordFilter:'all',hlFilter:'all',
+let state={view:'today',docId:null,panel:null,tab:'concepts',wordFilter:'all',hlFilter:'all',
  domain:'all',sort:'recent',query:'',revealed:false,testing:false,testQueue:[],
  briefLoading:false,pickVocab:new Set(),openDoc:null,allLinks:false,
  qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
@@ -599,7 +607,7 @@ const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
   for(const d of SEED)await store.set('pkos:doc:'+d.id,{id:d.id,content:d.content});
   await store.set('pkos:index',DB.index);
  }
- try{history.replaceState({view:'library',docId:null},'');}catch(e){}
+ try{history.replaceState({view:'today',docId:null},'');}catch(e){}
  render();
  if(SB.on)sbPull();
 })();
@@ -689,10 +697,11 @@ const dueWords=()=>K.vocabulary.filter(v=>!v.suspended&&(!v.nextReviewAt||v.next
 const dueConcepts=()=>K.concepts.filter(c=>!c.nextReviewAt||c.nextReviewAt<=now());
 
 function paintNav(){
- const items=[['library','Library','library',DB.index.docs.length],
+ const items=[['today','Today','today',''],
+  ['library','Library','library',DB.index.docs.length],
   ['words','Words','words',dueWords().length||K.vocabulary.length],
   ['knowledge','Knowledge','knowledge',K.concepts.length+K.thoughts.length+K.questions.length],
-  ['review','Review','review',dueConcepts().length],['today','Today','today','']];
+  ['review','Review','review',dueConcepts().length]];
  $nav.innerHTML=items.map(([k,l,ic,n])=>`<button class="navbtn" data-nav="${k}" aria-current="${state.view===k||(k==='library'&&state.view==='reader')}">
   ${svg(ic)}<span>${l}</span>${n===''?'':`<span class="n">${n}</span>`}</button>`).join('');
 }
@@ -1524,15 +1533,21 @@ function briefingCard(){
     <a class="btn plain sm" href="${esc(d.url)}" target="_blank" rel="noopener">Notion</a>
    </div></div>`;}).join('');
 
- const links=b.links||[];
- const linkList=links.length?`
-  <h3 class="sec">Sources<span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${links.length}</span></h3>
-  <div class="list">${links.slice(0,state.allLinks?60:8).map(l=>
-   `<a class="item" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
-     <h4 style="color:var(--blue)">${esc(l.title.slice(0,110))}</h4>
-     <div class="m"><span>${esc(host(l.url))}</span>${l.from?`<span>${esc(l.from)}</span>`:''}</div></a>`).join('')}</div>
-  ${links.length>8?`<div class="flexrow"><button class="btn sec sm" data-alllinks>${
-    state.allLinks?'Show fewer':`Show all ${links.length}`}</button></div>`:''}`
+ /* References are what the day's essay will cite. A headline without a link
+    is still worth listing, so both kinds appear in one list. */
+ const refs=todayRefs();
+ const shown=state.allLinks?refs:refs.slice(0,6);
+ const refList=refs.length?`
+  <h3 class="sec">References<span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${refs.length}</span></h3>
+  <div class="list">${shown.map(l=>{
+   const meta=[l.url?host(l.url):null,l.section,l.from].filter(Boolean)
+    .map(x=>`<span>${esc(x)}</span>`).join('');
+   return l.url
+    ? `<a class="item" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+        <h4 style="color:var(--blue)">${esc(l.title.slice(0,120))}</h4><div class="m">${meta}</div></a>`
+    : `<div class="item"><h4>${esc(l.title.slice(0,120))}</h4><div class="m">${meta}</div></div>`;}).join('')}</div>
+  ${refs.length>6?`<div class="flexrow"><button class="btn sec sm" data-alllinks>${
+    state.allLinks?'Show fewer':`Show all ${refs.length}`}</button></div>`:''}`
   :'';
 
  const all=docs.flatMap(d=>d.vocab||[]);
@@ -1546,14 +1561,26 @@ function briefingCard(){
 
  return `<div class="flexrow" style="margin:0 0 10px;justify-content:flex-end">
    <button class="btn sec sm" data-brief>Refresh</button></div>
-  ${cards}${linkList}
+  ${cards}${refList}
   ${vocab?`<h3 class="sec">Words already defined
     <span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${fresh.length} new</span></h3>
    <div class="list">${vocab}</div>
    <div class="flexrow">
     <button class="btn sm" data-keepvoc ${state.pickVocab.size?'':'disabled'}>Add ${state.pickVocab.size||''} to Words</button>
-    <span style="font-size:12px;color:var(--label3)">No lookups spent</span></div>`
+    <button class="btn sec sm" data-allvoc>${state.pickVocab.size===fresh.length?'Clear':'Select all'}</button>
+    <span style="font-size:12px;color:var(--label3)">Already defined, so no lookups spent</span></div>`
    :`<h3 class="sec">Words already defined</h3><div class="empty">All of today's words are saved</div>`}`;
+}
+/* Linked headlines first, then unlinked ones, so the clickable material is
+   at the top where it is useful. */
+function todayRefs(){
+ const b=DB.briefing;if(!b)return [];
+ const out=[],seen=new Set();
+ for(const l of b.links||[]){
+  const k=l.title.slice(0,60);if(seen.has(k))continue;seen.add(k);out.push(l);}
+ for(const it of b.items||[]){
+  const k=it.title.slice(0,60);if(seen.has(k))continue;seen.add(k);out.push(it);}
+ return out;
 }
 function host(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(e){return u.slice(0,30);}}
 /* Headings carry the shape of the briefing, so they survive into the preview. */
@@ -1603,6 +1630,12 @@ function writeCard(){
    <div class="v" style="font-size:14.5px;line-height:1.55">${esc(todayPrompt())}</div></div>
   ${must.length?`<div class="f"><div class="k">Use at least one</div>
    <div class="tagrow">${must.map(v=>`<span class="tg">${esc(v.word)}</span>`).join('')}</div></div>`:''}
+  ${(()=>{const r=todayRefs().slice(0,3);return r.length?`<div class="f"><div class="k">Today's references</div>
+   ${r.map(l=>l.url
+     ?`<div style="margin:3px 0"><a href="${esc(l.url)}" target="_blank" rel="noopener"
+        style="color:var(--blue);font-size:12.5px;text-decoration:none">${esc(l.title.slice(0,90))}</a></div>`
+     :`<div style="margin:3px 0;font-size:12.5px;color:var(--label2)">${esc(l.title.slice(0,90))}</div>`).join('')}
+   </div>`:'';})()}
   <textarea class="tin" id="essayin" style="width:100%;min-height:110px;line-height:1.55"
    placeholder="Three to five sentences in English">${esc(state.essayText||'')}</textarea>
   <div class="acts">
@@ -1727,6 +1760,13 @@ document.addEventListener('click',async e=>{
  const xp=T.closest('[data-expand]');
  if(xp){state.openDoc=state.openDoc===xp.dataset.expand?null:xp.dataset.expand;return render();}
  if(T.closest('[data-alllinks]')){state.allLinks=!state.allLinks;return render();}
+ if(T.closest('[data-allvoc]')){
+  const all=(DB.briefing?.docs||[]).flatMap(d=>d.vocab||[]);
+  const fresh=all.filter((v,i)=>all.findIndex(x=>x.word.toLowerCase()===v.word.toLowerCase())===i
+    &&!K.vocabulary.some(x=>String(x.word).toLowerCase()===v.word.toLowerCase()));
+  if(state.pickVocab.size===fresh.length)state.pickVocab.clear();
+  else fresh.forEach((_,i)=>state.pickVocab.add(i));
+  return render();}
  const kdoc=T.closest('[data-keepdoc]');
  if(kdoc){
   const d=(DB.briefing?.docs||[]).find(x=>x.key===kdoc.dataset.keepdoc);
