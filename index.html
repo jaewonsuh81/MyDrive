@@ -8,6 +8,8 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MyDrive">
 <style>
 :root{
@@ -306,6 +308,7 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
   .app.nopanel{grid-template-columns:206px minmax(0,1fr)}
   .panel{position:fixed;inset:auto 0 0 0;max-height:74dvh;border-left:none;border-top:1px solid var(--sep);
     border-radius:var(--r4) var(--r4) 0 0;z-index:50;box-shadow:var(--shadow-l);background:var(--elevated);
+    padding-bottom:env(safe-area-inset-bottom);
     transform:translateY(101%);transition:transform .42s var(--ease)}
   .panel.open{transform:translateY(0)}
   .app.nopanel>.panel{display:block}
@@ -316,7 +319,7 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
 @media (max-width:720px){
   .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
   .app.nopanel{grid-template-columns:1fr}
-  .sidebar{flex-direction:row;align-items:center;gap:4px;padding:8px 12px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--sep)}
+  .sidebar{flex-direction:row;align-items:center;gap:4px;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--sep)}
   .sidebar .mark,.sidebar .usage{display:none}
   .navbtn{width:auto;padding:6px 11px;white-space:nowrap} .navbtn .n{display:none}
   .toolbar{padding:0 14px} .field{width:132px} .field:focus-within{width:176px}
@@ -411,12 +414,39 @@ const store={
     toast('Storage is full — export a backup and remove a document');
     setTimeout(()=>{storageWarned=false;},60000);}
   }
-  if(SB.on){
-   if(k.startsWith('pkos:doc:'))sbPushDoc(k.slice(9),v.content||'').catch(()=>{});
-   else sbPushState(k,v).catch(()=>{});
-   written=true;
-  }
+  if(SB.on){queueRemote(k);written=true;}
   return written;}};
+
+/* Local writes must feel instant, but shipping the whole knowledge blob on
+   every highlight would be wasteful and rate-limited. Remote pushes are
+   therefore coalesced on a slower timer, and anything that fails stays queued
+   for the next attempt instead of disappearing. */
+const remoteQueue=new Set();
+let remoteTimer=null;
+function queueRemote(k){
+ remoteQueue.add(k);
+ clearTimeout(remoteTimer);
+ remoteTimer=setTimeout(pushRemote,3500);
+}
+async function pushRemote(){
+ if(!SB.on||!SB.user||!remoteQueue.size)return;
+ const keys=[...remoteQueue];
+ for(const k of keys){
+  try{
+   if(k.startsWith('pkos:doc:')){
+    const doc=mem[k]||await store.get(k);
+    await sbPushDoc(k.slice(9),doc?.content||'');
+   }else{
+    const v=dbValue(k);
+    if(v===undefined)continue;
+    await sbPushState(k,v);
+   }
+   remoteQueue.delete(k);
+  }catch(e){SB.lastError=e.message;}   // keep it queued and try again later
+ }
+ if(remoteQueue.size)remoteTimer=setTimeout(pushRemote,15000);
+ paintUsage();
+}
 function storageBytes(){
  try{let n=0;for(const k in localStorage)
   if(k.startsWith('pkos:'))n+=(localStorage.getItem(k)||'').length;return n;}catch(e){return 0;}
@@ -559,7 +589,7 @@ function flushWrites(){
  const keys=[...dirty];dirty.clear();
  keys.forEach(k=>{const v=dbValue(k);if(v!==undefined)store.set(k,v);});
 }
-window.addEventListener('pagehide',flushWrites);
+window.addEventListener('pagehide',()=>{flushWrites();pushRemote();});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushWrites();});
 
 const SCHEMA=2;   // bump when the stored shape changes; migrations run in boot()
@@ -704,7 +734,17 @@ async function sandboxLLM(mode,text,sentence,lang){
 }
 
 /* ---------- helpers ---------- */
+/* A megabyte per book adds up, so only the few most recently opened documents
+   stay in memory; the rest are re-read from storage on demand. */
 const docCache={};
+const docOrder=[];
+function cacheDoc(id,d){
+ docCache[id]=d;
+ const i=docOrder.indexOf(id);if(i>=0)docOrder.splice(i,1);
+ docOrder.push(id);
+ while(docOrder.length>4)delete docCache[docOrder.shift()];
+ return d;
+}
 async function loadDoc(id){
  if(docCache[id])return docCache[id];
  let d=await store.get('pkos:doc:'+id);
@@ -712,7 +752,7 @@ async function loadDoc(id){
   const remote=await sbGetDoc(id);
   if(remote){d=remote;try{localStorage.setItem('pkos:doc:'+id,JSON.stringify(d));}catch(e){}}
  }
- docCache[id]=d;return d;
+ return cacheDoc(id,d);
 }
 const meta=id=>DB.index.docs.find(d=>d.id===id);
 function sentenceAt(t,s,e){let a=s,b=e;const stop='.!?。\n';
@@ -765,7 +805,26 @@ function render(){
  else if(state.view==='today'){viewToday();
   if(!DB.briefing&&!state.briefLoading)loadBriefing(false);}
  paintPanel();
+ syncWakeLock();
 }
+// Keeps the phone's screen from auto-locking while a book is open, like a
+// dedicated e-reader. No-ops silently where the Wake Lock API is unsupported
+// or denied — reading still works fine, the screen just times out normally.
+let wakeLock=null;
+async function syncWakeLock(){
+ if(state.view==='reader'){
+  if(wakeLock||!('wakeLock' in navigator))return;
+  try{
+   wakeLock=await navigator.wakeLock.request('screen');
+   wakeLock.addEventListener('release',()=>{wakeLock=null;});
+  }catch(e){/* denied, unsupported, or tab backgrounded — fine either way */}
+ }else if(wakeLock){
+  wakeLock.release().catch(()=>{});wakeLock=null;
+ }
+}
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState==='visible')syncWakeLock();
+});
 function go(view,opts={}){
  state.view=view;
  if(opts.docId!==undefined)state.docId=opts.docId;
@@ -864,7 +923,7 @@ async function addDoc(title,author,content,domain){
  const id=uid('doc');
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
   language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null});
- await store.set('pkos:doc:'+id,{id,content});docCache[id]={id,content};save('pkos:index');
+ await store.set('pkos:doc:'+id,{id,content});cacheDoc(id,{id,content});save('pkos:index');
  go('reader',{docId:id});toast('Document added');
 }
 /* Editing source text shifts every offset after the edit, so each highlight
@@ -936,6 +995,14 @@ function growReader(n){
 async function viewReader(keep){
  const m=meta(state.docId);if(!m){state.view='library';return render();}
  const d=await loadDoc(state.docId);$tb.textContent=m.title;
+ if(!d||typeof d.content!=='string'){
+  // Offline with no cached copy, or the row is gone. Say so instead of crashing.
+  $view.innerHTML=`<div class="view"><div class="largetitle"><h1>${esc(m.title)}</h1></div>
+   <div class="empty">The text of this document is not on this device.
+    ${SB.on?'It may still be on the server — try again in a moment.'
+           :'Sign in to fetch it from the server.'}</div>
+   <div class="flexrow"><button class="btn sec sm" data-nav="library">Back to Library</button></div></div>`;
+  return;}
 
  readerHls=K.highlights.filter(h=>h.documentId===m.id&&!h.orphaned).sort((a,b)=>a.start-b.start);
  readerMemo={};let memoN=0;
@@ -989,7 +1056,10 @@ function renderMargins(){
  wrap.classList.toggle('wide',wide);
  g.innerHTML='';if(!wide)return;
  const gr=g.getBoundingClientRect();let last=-1e5;
- K.highlights.filter(h=>h.documentId===state.docId&&!h.orphaned).sort((a,b)=>a.start-b.start).forEach(h=>{
+ const limit=readerBlocks.length&&readerShown<readerBlocks.length
+  ? readerBlocks[readerShown-1].start+readerBlocks[readerShown-1].text.length : Infinity;
+ K.highlights.filter(h=>h.documentId===state.docId&&!h.orphaned&&h.start<=limit)
+  .sort((a,b)=>a.start-b.start).forEach(h=>{
   const linked=[...K.thoughts,...K.questions].find(o=>o.sourceHighlightId===h.id)
             ||K.vocabulary.find(v=>v.sourceHighlightId===h.id);
   const note=h.note||h.translation||linked?.body||linked?.contextualMeaning||'';
@@ -1607,8 +1677,8 @@ function viewWrite(){
     <button class="btn sec sm" data-usecorrected>Replace my draft with it</button></div></div>`:''}
 
   ${refs.length?`<h3 class="sec">Today's references</h3>
-   <div class="list">${refs.map(l=>l.url
-    ?`<a class="item" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+   <div class="list">${refs.map(l=>safeUrl(l.url)
+    ?`<a class="item" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
        <h4 style="color:var(--blue)">${esc(l.title.slice(0,110))}</h4>
        <div class="m"><span>${esc(host(l.url))}</span></div></a>`
     :`<div class="item"><h4>${esc(l.title.slice(0,110))}</h4></div>`).join('')}</div>`:''}
@@ -1720,7 +1790,7 @@ function briefingCard(){
     <button class="btn sec sm" data-expand="${d.key}">${open?'Collapse':'Read it all'}</button>
     ${already?'<span class="badge">In Library</span>'
       :`<button class="btn sm" data-keepdoc="${d.key}">Save to Library</button>`}
-    <a class="btn plain sm" href="${esc(d.url)}" target="_blank" rel="noopener">Notion</a>
+    <a class="btn plain sm" href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener">Notion</a>
    </div></div>`;}).join('');
 
  /* References are what the day's essay will cite. A headline without a link
@@ -1732,8 +1802,8 @@ function briefingCard(){
   <div class="list">${shown.map(l=>{
    const meta=[l.url?host(l.url):null,l.section,l.from].filter(Boolean)
     .map(x=>`<span>${esc(x)}</span>`).join('');
-   return l.url
-    ? `<a class="item" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+   return safeUrl(l.url)
+    ? `<a class="item" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
         <h4 style="color:var(--blue)">${esc(l.title.slice(0,120))}</h4><div class="m">${meta}</div></a>`
     : `<div class="item"><h4>${esc(l.title.slice(0,120))}</h4><div class="m">${meta}</div></div>`;}).join('')}</div>
   ${refs.length>6?`<div class="flexrow"><button class="btn sec sm" data-alllinks>${
@@ -1771,6 +1841,10 @@ function todayRefs(){
  for(const it of b.items||[]){
   const k=it.title.slice(0,60);if(seen.has(k))continue;seen.add(k);out.push(it);}
  return out;
+}
+/* Links arrive from another system. Only http(s) is ever put in an href. */
+function safeUrl(u){
+ try{const p=new URL(u);return /^https?:$/.test(p.protocol)?p.href:'';}catch(e){return '';}
 }
 function host(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(e){return u.slice(0,30);}}
 /* Headings carry the shape of the briefing, so they survive into the preview. */
@@ -1822,7 +1896,7 @@ function writeCard(){
    <div class="tagrow">${must.map(v=>`<span class="tg">${esc(v.word)}</span>`).join('')}</div></div>`:''}
   ${(()=>{const r=todayRefs().slice(0,3);return r.length?`<div class="f"><div class="k">Today's references</div>
    ${r.map(l=>l.url
-     ?`<div style="margin:3px 0"><a href="${esc(l.url)}" target="_blank" rel="noopener"
+     ?`<div style="margin:3px 0"><a href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener"
         style="color:var(--blue);font-size:12.5px;text-decoration:none">${esc(l.title.slice(0,90))}</a></div>`
      :`<div style="margin:3px 0;font-size:12.5px;color:var(--label2)">${esc(l.title.slice(0,90))}</div>`).join('')}
    </div>`:'';})()}
@@ -1993,7 +2067,7 @@ document.addEventListener('click',async e=>{
   const id=uid('doc');
   DB.index.docs.unshift({id,title:d.title,author:'Notion feed',domain:'World / News / Investment',
    language:'en',chars:d.text.length,progress:0,createdAt:now(),lastReadAt:null});
-  await store.set('pkos:doc:'+id,{id,content:d.text});docCache[id]={id,content:d.text};
+  await store.set('pkos:doc:'+id,{id,content:d.text});cacheDoc(id,{id,content:d.text});
   save('pkos:index');render();return toast('Saved to Library');}
  const vc=T.closest('[data-voc]');
  if(vc){const i=+vc.dataset.voc;
@@ -2041,7 +2115,7 @@ document.addEventListener('click',async e=>{
   if(next!==prev){
    const r=reanchor(m.id,next);
    m.chars=next.length;m.language=isKo(next.slice(0,400))?'ko':'en';
-   docCache[m.id]={id:m.id,content:next};await store.set('pkos:doc:'+m.id,docCache[m.id]);
+   cacheDoc(m.id,{id:m.id,content:next});await store.set('pkos:doc:'+m.id,docCache[m.id]);
    msg=`Saved · ${r.moved} re-attached${r.lost?`, ${r.lost} lost their place`:''}`;}
   save('pkos:index','pkos:knowledge');state.panel=null;lastReaderDoc=null;render();return toast(msg);}
  const dd=T.closest('[data-docdel]');
