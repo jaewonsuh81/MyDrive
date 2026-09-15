@@ -383,9 +383,11 @@ let storageFull=false,storageWarned=false;
 const store={
  async get(k){
   try{const r=await window.storage.get(k);if(r)return JSON.parse(r.value);}catch(e){}
-  try{const v=localStorage.getItem(k);if(v!=null)return JSON.parse(v);}catch(e){}
+  try{const v=localStorage.getItem(k);
+   if(v!=null&&v!=='undefined')return JSON.parse(v);}catch(e){}
   return mem[k]??null;},
  async set(k,v){
+  if(v===undefined)return false;          // never write a hole over real data
   mem[k]=v;
   const str=JSON.stringify(v);
   let written=false;
@@ -535,10 +537,16 @@ async function sbDeleteDoc(id){
 
 let wt=null,dirty=new Set();
 function save(...keys){keys.forEach(k=>dirty.add(k));clearTimeout(wt);wt=setTimeout(flushWrites,300);}
+/* The storage key and the field it holds are not the same name, so the value
+   has to be looked up through this map. Writing DB[key] directly stored
+   undefined, which meant nothing survived a reload. */
+const DBFIELD={'pkos:index':'index','pkos:knowledge':'knowledge','pkos:reviewlogs':'reviewlogs',
+ 'pkos:tcache':'tcache','pkos:stats':'stats','pkos:prefs':'prefs','pkos:briefing':'briefing'};
+const dbValue=k=>DBFIELD[k]?DB[DBFIELD[k]]:DB[k];
 function flushWrites(){
  if(wt){clearTimeout(wt);wt=null;}
  const keys=[...dirty];dirty.clear();
- keys.forEach(k=>store.set(k,DB[k]));
+ keys.forEach(k=>{const v=dbValue(k);if(v!==undefined)store.set(k,v);});
 }
 window.addEventListener('pagehide',flushWrites);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushWrites();});
