@@ -55,7 +55,10 @@ async function allBlocks(id, token) {
 function harvest(blocks) {
   const lines = [];
   const links = [];
+  const items = [];
   const seen = new Set();
+  let counter = 0;      // Notion does not send the number of a numbered item
+  let section = '';
 
   for (const b of blocks) {
     const t = b.type;
@@ -63,28 +66,49 @@ function harvest(blocks) {
 
     if (t === 'bookmark' || t === 'embed') {
       const url = b[t]?.url;
-      if (url && !seen.has(url)) { seen.add(url); links.push({ title: url, url }); }
+      if (url && !seen.has(url)) { seen.add(url); links.push({ title: url, url, section }); }
       continue;
     }
-    if (t === 'divider') { lines.push('---'); continue; }
+    if (t === 'divider') { lines.push('---'); counter = 0; continue; }
     if (!rt) continue;
 
+    // A link lives on the run that carries it, so headlines and their sources
+    // have to be read run by run rather than block by block.
+    let blockUrl = null;
     for (const run of rt) {
       const url = run.href || run.text?.link?.url;
       const label = (run.plain_text || '').trim();
-      if (url && label && !seen.has(url)) { seen.add(url); links.push({ title: label, url }); }
+      if (!url) continue;
+      if (!blockUrl) blockUrl = url;
+      if (label && !seen.has(url)) { seen.add(url); links.push({ title: label, url, section }); }
     }
 
     const text = plain(rt).replace(/\\/g, '').trim();
     if (!text) continue;
-    if (t === 'heading_1') lines.push('\n# ' + text);
-    else if (t === 'heading_2') lines.push('\n## ' + text);
-    else if (t === 'heading_3') lines.push('\n### ' + text);
-    else if (t === 'bulleted_list_item') lines.push('\u2022 ' + text);
-    else if (t === 'quote') lines.push('> ' + text);
-    else lines.push(text);
+
+    if (t === 'heading_1' || t === 'heading_2' || t === 'heading_3') {
+      section = text; counter = 0;
+      lines.push((t === 'heading_1' ? '\n# ' : t === 'heading_2' ? '\n## ' : '\n### ') + text);
+      continue;
+    }
+    if (t === 'numbered_list_item') {
+      // Restore the number so downstream parsing and reading both work.
+      counter += 1;
+      lines.push(counter + '. ' + text);
+      continue;
+    }
+    if (t === 'bulleted_list_item') {
+      lines.push('\u2022 ' + text);
+      // Headline bullets are the reference material worth surfacing.
+      // The score line under each headline is metadata, not a reference.
+      if (text.length > 25 && !/^score\b/i.test(text))
+        items.push({ title: text, url: blockUrl || null, section });
+      continue;
+    }
+    if (t === 'quote') { lines.push('> ' + text); continue; }
+    lines.push(text);
   }
-  return { text: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim(), links };
+  return { text: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim(), links, items };
 }
 
 /* Two shapes appear in practice:
@@ -138,7 +162,7 @@ async function latest(token, query, match) {
 async function build(token, key, label, query, match) {
   const page = await latest(token, query, match);
   if (!page) return { key, label, missing: true, query };
-  const { text, links } = harvest(await allBlocks(page.id, token));
+  const { text, links, items } = harvest(await allBlocks(page.id, token));
   return {
     key, label,
     title: page.title,
@@ -147,6 +171,7 @@ async function build(token, key, label, query, match) {
     text,
     chars: text.length,
     links,
+    items,
     vocab: vocabFrom(text),
   };
 }
@@ -182,11 +207,24 @@ export default async function handler(req, res) {
       for (const l of d.links || [])
         if (!seen.has(l.url)) { seen.add(l.url); links.push({ ...l, from: d.label }); }
 
+    // Headline bullets, whether or not the page linked them. These are what a
+    // day's essay actually cites, so they travel even without a URL.
+    const items = [];
+    const seenItem = new Set();
+    for (const d of docs)
+      for (const it of d.items || []) {
+        const k = it.title.slice(0, 60);
+        if (seenItem.has(k)) continue;
+        seenItem.add(k);
+        items.push({ ...it, from: d.label });
+      }
+
     res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate');
     return res.status(200).json({
       configured: true,
       date: docs.find((d) => d.date)?.date || '',
       docs: docs.filter((d) => !d.missing),
+      items,
       missing: docs.filter((d) => d.missing).map((d) => d.query),
       links,
     });
