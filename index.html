@@ -572,6 +572,7 @@ const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
       $toolbar=$('toolbar'),$usage=$('usage'),$main=$('main'),$app=$('app');
 
 (async function boot(){
+ await sbInit();                       // must run before anything asks whether sync exists
  const [ix,kn,tc,st,pf,rl,bf]=await Promise.all(
   ['pkos:index','pkos:knowledge','pkos:tcache','pkos:stats','pkos:prefs','pkos:reviewlogs','pkos:briefing'].map(store.get));
  if(bf&&bf.fetchedFor===new Date().toISOString().slice(0,10))DB.briefing=bf;
@@ -600,6 +601,7 @@ const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
  }
  try{history.replaceState({view:'library',docId:null},'');}catch(e){}
  render();
+ if(SB.on)sbPull();
 })();
 
 function applyPrefs(){
@@ -1182,8 +1184,7 @@ function accountHTML(p){
   <div class="acts"><button class="btn sec sm" data-recheck>Check again</button></div></div>`);
  return shell('Account',`<div class="card">
   ${p?.error?`<div class="err" style="margin-bottom:10px">${esc(p.error)}</div>`:''}
-  <p style="font-size:12px;color:var(--label2);margin:0 0 12px;line-height:1.5">
-   This is a MyDrive account, not your Supabase dashboard login. Pick any email and password.</p>
+
   <div class="f"><div class="k">Email</div>
    <input class="tin" id="sbemail" type="email" autocomplete="email" style="width:100%" value="${esc(p?.email||'')}"></div>
   <div class="f"><div class="k">Password</div>
@@ -1705,6 +1706,9 @@ document.addEventListener('click',async e=>{
   return toast(SB.configured?'Supabase is reachable':'Still not configured');}
  const si=T.closest('[data-signin]')||T.closest('[data-signup]');
  if(si){
+  if(!SB.url||!SB.anon){await sbInit();
+   if(!SB.url||!SB.anon){state.panel={type:'account'};paintPanel();
+    return toast('Server is not configured yet');}}
   const email=($('sbemail')?.value||'').trim(),pw=$('sbpass')?.value||'';
   if(!email||!pw)return toast('Email and password required');
   try{await sbSignIn(email,pw,si.hasAttribute('data-signup'));
