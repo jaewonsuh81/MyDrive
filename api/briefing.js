@@ -136,6 +136,59 @@ function vocabFrom(text) {
   return out;
 }
 
+/* The briefing prose carries no hyperlinks. The real URLs live one level down,
+   on each article page in the news database, so references are read from there
+   rather than scraped out of the text. Property names vary between workspaces,
+   so each field is found by type rather than by an exact name. */
+function propText(props, type, namePattern) {
+  for (const [name, p] of Object.entries(props || {})) {
+    if (p.type !== type) continue;
+    if (namePattern && !namePattern.test(name)) continue;
+    if (type === 'url') return p.url || '';
+    if (type === 'title') return plain(p.title);
+    if (type === 'rich_text') return plain(p.rich_text);
+    if (type === 'select') return p.select?.name || '';
+    if (type === 'multi_select') return (p.multi_select || []).map((x) => x.name).join(', ');
+    if (type === 'date') return p.date?.start || '';
+  }
+  return '';
+}
+
+async function newsDatabaseId(token) {
+  if (process.env.NOTION_NEWS_DB) return process.env.NOTION_NEWS_DB;
+  const j = await notion('/search', token, {
+    method: 'POST',
+    body: JSON.stringify({
+      query: 'News',
+      filter: { property: 'object', value: 'database' },
+      page_size: 10,
+    }),
+  });
+  const db = (j.results || []).find((d) => /news/i.test(plain(d.title)));
+  return db?.id || null;
+}
+
+async function newsItems(token, limit = 40) {
+  const id = await newsDatabaseId(token);
+  if (!id) return [];
+  const j = await notion(`/databases/${id}/query`, token, {
+    method: 'POST',
+    body: JSON.stringify({ page_size: limit }),
+  });
+  return (j.results || [])
+    .map((p) => ({
+      title: propText(p.properties, 'title'),
+      url: propText(p.properties, 'url'),
+      section: propText(p.properties, 'select', /category|topic|section/i),
+      source: propText(p.properties, 'multi_select', /source|outlet/i),
+      date: propText(p.properties, 'date'),
+      note: propText(p.properties, 'rich_text', /key fact|synthesis|summary/i).slice(0, 220),
+      edited: p.last_edited_time,
+    }))
+    .filter((x) => x.title)
+    .sort((a, b) => String(b.date || b.edited).localeCompare(String(a.date || a.edited)));
+}
+
 const titleOf = (p) => {
   const props = p.properties || {};
   for (const k of Object.keys(props)) if (props[k].type === 'title') return plain(props[k].title);
@@ -207,15 +260,25 @@ export default async function handler(req, res) {
       for (const l of d.links || [])
         if (!seen.has(l.url)) { seen.add(l.url); links.push({ ...l, from: d.label }); }
 
-    // Headline bullets, whether or not the page linked them. These are what a
-    // day's essay actually cites, so they travel even without a URL.
+    // References: real article rows first (they carry URLs), then any headline
+    // bullets from the briefing that the news rows did not already cover.
     const items = [];
     const seenItem = new Set();
+    const key = (t) => t.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+
+    let news = [];
+    try { news = await newsItems(token); } catch (e) { news = []; }
+    const day = news[0]?.date || '';
+    for (const n of news) {
+      if (day && n.date && n.date !== day) continue;   // today's batch only
+      if (seenItem.has(key(n.title))) continue;
+      seenItem.add(key(n.title));
+      items.push({ ...n, from: n.source || 'News DB' });
+    }
     for (const d of docs)
       for (const it of d.items || []) {
-        const k = it.title.slice(0, 60);
-        if (seenItem.has(k)) continue;
-        seenItem.add(k);
+        if (seenItem.has(key(it.title))) continue;
+        seenItem.add(key(it.title));
         items.push({ ...it, from: d.label });
       }
 
@@ -225,6 +288,8 @@ export default async function handler(req, res) {
       date: docs.find((d) => d.date)?.date || '',
       docs: docs.filter((d) => !d.missing),
       items,
+      counts: {refs: items.length, linked: items.filter((i) => i.url).length,
+        vocab: docs.reduce((n, d) => n + (d.vocab || []).length, 0)},
       missing: docs.filter((d) => d.missing).map((d) => d.query),
       links,
     });
