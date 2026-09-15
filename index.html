@@ -319,9 +319,22 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
 @media (max-width:720px){
   .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
   .app.nopanel{grid-template-columns:1fr}
-  .sidebar{flex-direction:row;align-items:center;gap:4px;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--sep)}
-  .sidebar .mark,.sidebar .usage{display:none}
-  .navbtn{width:auto;padding:6px 11px;white-space:nowrap} .navbtn .n{display:none}
+  /* Sidebar becomes a slim two-row strip: a horizontally scrolling nav
+     pill row, then a thin account/sign-in row underneath. Nothing here
+     scrolls out of view — that was the bug (see #nav below). */
+  .sidebar{flex-direction:column;padding:calc(6px + env(safe-area-inset-top)) 0 0;
+    overflow:visible;border-right:none;border-bottom:1px solid var(--sep)}
+  .sidebar .mark{display:none}
+  /* <nav> itself had no display:flex, so its buttons fell back to normal
+     block flow and stacked one-per-line no matter what .sidebar did. */
+  #nav{display:flex;gap:2px;overflow-x:auto;padding:2px 12px 6px}
+  .navbtn{width:auto;padding:6px 11px;white-space:nowrap;flex:none} .navbtn .n{display:none}
+  /* Keep only the sign-in/account row; storage bar and theme toggle are
+     desktop-only conveniences that just crowd out "Sign in" on a phone. */
+  .sidebar .usage{margin:0;background:none;border-radius:0;padding:2px 12px calc(6px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--sep);font-size:12px}
+  .sidebar .usage>*{display:none}
+  .sidebar .usage>[data-account]{display:flex;width:auto!important;padding:6px 2px!important}
   .toolbar{padding:0 14px} .field{width:132px} .field:focus-within{width:176px}
   .view{padding:4px 16px 140px} .largetitle h1{font-size:27px}
   .rhead,.readwrap{padding:0 14px}
