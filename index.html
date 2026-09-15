@@ -177,12 +177,12 @@ h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px
 
 /* ---------------- reader ---------------- */
 .reader{max-width:none;padding:0 0 44vh}
-.rhead{max-width:var(--rw,40em);margin:14px auto 26px;padding:0 20px}
+.rhead{max-width:var(--rw,40em);margin:14px auto 22px;padding:0 14px}
 .rtools{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .rtools .spacer{flex:1}
 .rhead h1{font-family:var(--serif);font-size:29px;font-weight:600;line-height:1.17;letter-spacing:-.015em;margin:10px 0 8px}
 .rhead .meta{font-size:12.5px;color:var(--label2)}
-.readwrap{display:flex;justify-content:center;gap:22px;position:relative;padding:0 20px}
+.readwrap{display:flex;justify-content:center;gap:22px;position:relative;padding:0 14px}
 .gutter{position:relative;flex:0 0 178px}
 .readwrap:not(.wide) .gutter{display:none}
 .doctext{flex:1 1 auto;min-width:0;font-family:var(--serif);font-size:var(--read,19px);line-height:var(--lh,1.68);
@@ -321,7 +321,7 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
   .navbtn{width:auto;padding:6px 11px;white-space:nowrap} .navbtn .n{display:none}
   .toolbar{padding:0 14px} .field{width:132px} .field:focus-within{width:176px}
   .view{padding:4px 16px 140px} .largetitle h1{font-size:27px}
-  .rhead,.readwrap{padding:0 16px}
+  .rhead,.readwrap{padding:0 14px}
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
@@ -563,7 +563,7 @@ window.addEventListener('pagehide',flushWrites);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushWrites();});
 
 const SCHEMA=2;   // bump when the stored shape changes; migrations run in boot()
-const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'wide',lh:1.68,panel:true,newPerDay:10};
+const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'full',lh:1.68,panel:true,newPerDay:10,wv:2};
 const DB={index:{docs:[]},
  knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],writings:[]},
  reviewlogs:[],
@@ -611,6 +611,10 @@ const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
  if(K.reviewLogs){delete K.reviewLogs;save('pkos:knowledge','pkos:reviewlogs');}
  if(tc)DB.tcache=tc; if(st)DB.stats=st;
  if(pf)DB.prefs={...DEFAULT_PREFS,...pf};
+ /* Stored preferences outrank defaults, so a change to the default reading
+    width would never reach anyone who had already used the app. This carries
+    existing settings over once. */
+ if((DB.prefs.wv||0)<2){DB.prefs.width='full';DB.prefs.wv=2;store.set('pkos:prefs',DB.prefs);}
  if(!K.writings)K.writings=[];
  K.highlights.forEach(h=>{                         // migrate colour-era highlights
   if(!h.tags)h.tags=[];
