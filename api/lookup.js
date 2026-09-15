@@ -16,7 +16,8 @@
  *                     which models the key can actually reach.
  */
 
-const MAX_TEXT = 4000;      // cost guard
+const MAX_TEXT = 6000;      // cost guard (writing feedback needs more room)
+const MAX_BRIEFING = 24000; // a briefing is long by nature
 const MAX_SENTENCE = 1200;
 
 const SYSTEM =
@@ -57,6 +58,20 @@ translation = 직역이 아니라 자연스러운 한국어 의역. 원문이 �
 gist        = 요지 한 문장
 terms       = 이 구절의 핵심 표현 최대 4개`,
 
+  briefing: (text) => `TASK: split a daily news briefing into a reading checklist
+BRIEFING:
+${text}
+
+Return JSON:
+{"summary":str,"items":[{"source":str,"title":str,"gist":str,"why":str}]}
+
+summary = 오늘 흐름을 3~4문장으로, 한국어. 개별 기사 나열이 아니라 큰 그림.
+items   = 실제로 읽을 가치가 있는 기사만 4~8개. 중복 주제는 하나로 합친다.
+source  = 언론사명. 없으면 추정하지 말고 "".
+title   = 기사 제목. 영문 기사면 영문 그대로 둔다.
+gist    = 한 문장 요약, 한국어.
+why     = 이 사람이 왜 읽어야 하는지 한 구절. 공학/AI/투자 관점을 우선한다.`,
+
   explain: (text, sentence) => `TASK: simple explanation
 SELECTED: ${JSON.stringify(text)}
 SENTENCE: ${JSON.stringify(sentence)}
@@ -64,6 +79,33 @@ SENTENCE: ${JSON.stringify(sentence)}
 Return JSON: {"explanation":str,"analogy":str}
 explanation = 배경지식이 없어도 이해할 수 있게 2~3문장, 한국어
 analogy     = 짧은 비유 하나, 없으면 ""`,
+
+  /* Writing practice. The point is not a score but a usable correction:
+     what was wrong, what a native writer would have put, and one thing to
+     carry into the next sentence. */
+  critique: (text, sentence) => `TASK: correct one learner sentence
+TARGET_WORD: ${JSON.stringify(sentence)}
+LEARNER_SENTENCE: ${JSON.stringify(text)}
+
+Return JSON:
+{"ok":true|false,"corrected":str,"note":str,"why":str}
+
+ok        = 문법과 용법이 모두 자연스러우면 true
+corrected = 원어민이 쓸 법한 문장. 고칠 것이 없으면 원문 그대로
+note      = 무엇을 왜 고쳤는지 한국어 한두 문장. 고칠 것이 없으면 왜 좋은지
+why       = 다음 문장에 적용할 규칙 한 줄, 한국어`,
+
+  essay: (text, sentence) => `TASK: give feedback on a short piece of learner writing
+PROMPT: ${JSON.stringify(sentence)}
+LEARNER_TEXT: ${JSON.stringify(text)}
+
+Return JSON:
+{"corrected":str,"note":str,"why":str,"good":str}
+
+corrected = 전체를 자연스러운 영어로 다시 쓴 것. 학습자의 논지와 길이는 유지한다
+note      = 반복되는 오류 패턴 2~3개, 한국어
+why       = 다음에 쓸 때 지킬 규칙 한 줄, 한국어
+good      = 학습자가 잘한 점 한 가지, 한국어`,
 
   deep: (text, sentence) => `TASK: in-depth explanation
 SELECTED: ${JSON.stringify(text)}
@@ -104,7 +146,7 @@ const providers = {
               // Thinking is billed against the output budget. A dictionary
               // lookup does not need it, and leaving it on lets the model burn
               // the whole allowance before writing a single character.
-              maxOutputTokens: 4096,
+              maxOutputTokens: 8192,
               responseMimeType: 'application/json',
               ...thinkingConfigFor(model),
             },
@@ -233,9 +275,38 @@ async function health(res, providerName) {
   return res.status(200).json(out);
 }
 
+/* A public endpoint with a billable key behind it is somebody else's free
+   API. Two cheap guards: reject cross-site callers, and cap the burst rate a
+   single address can produce. Neither costs a database. */
+const hits = new Map();
+function rateLimited(ip) {
+  const now = Date.now();
+  const windowMs = 60_000;
+  const max = 40;
+  const rec = hits.get(ip);
+  if (!rec || now - rec.start > windowMs) {
+    hits.set(ip, { start: now, n: 1 });
+    if (hits.size > 500) for (const [k, v] of hits) if (now - v.start > windowMs) hits.delete(k);
+    return false;
+  }
+  rec.n += 1;
+  return rec.n > max;
+}
+function crossSite(req) {
+  const origin = req.headers.origin;
+  if (!origin) return false;                       // same-origin GETs, curl, health checks
+  try {
+    return new URL(origin).host !== req.headers.host;
+  } catch {
+    return true;
+  }
+}
+
 /* ----------------------------------------------------------------- route */
 export default async function handler(req, res) {
   const providerName = process.env.LLM_PROVIDER || 'gemini';
+
+  if (crossSite(req)) return res.status(403).json({ error: 'Cross-site requests are not allowed' });
 
   if (req.method === 'GET') {
     const url = new URL(req.url, 'http://x');
@@ -249,12 +320,15 @@ export default async function handler(req, res) {
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
   const mode = body.mode;
-  const text = String(body.text || '').slice(0, MAX_TEXT);
+  const text = String(body.text || '').slice(0, mode === 'briefing' ? MAX_BRIEFING : MAX_TEXT);
   const sentence = String(body.sentence || '').slice(0, MAX_SENTENCE);
   const lang = body.lang === 'ko' ? 'ko' : 'en';
 
   if (!PROMPTS[mode]) return res.status(400).json({ error: 'Unknown mode: ' + mode });
   if (!text.trim()) return res.status(400).json({ error: 'Empty selection' });
+
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  if (rateLimited(ip)) return res.status(429).json({ error: '잠시 후 다시 시도하세요 (요청이 너무 잦습니다)' });
 
   const provider = providers[providerName];
   if (!provider) return res.status(500).json({ error: 'Unknown provider: ' + providerName });
