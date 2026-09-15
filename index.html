@@ -363,6 +363,16 @@ const uid=p=>p+'_'+Math.random().toString(36).slice(2,9);
 const now=()=>new Date().toISOString();
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const isKo=s=>/[\uAC00-\uD7A3]/.test(s);
+/* Postgres cannot hold a NUL byte, and old ebook text is full of stray control
+   characters. Cleaning on the way in keeps the text readable and stops the
+   server rejecting an entire upload over one invisible character. */
+function cleanText(t){
+ return String(t||'')
+  .replace(/\u0000/g,'')
+  .replace(/\r\n?/g,'\n')
+  .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,'')
+  .replace(/\uFEFF/g,'');
+}
 const dayjs=n=>new Date(Date.now()+n*864e5).toISOString();
 
 const ICON={
@@ -371,6 +381,7 @@ const ICON={
  knowledge:'<path d="M12 3.5c-3.6 0-6.5 2.7-6.5 6 0 2 1 3.4 2 4.4.7.8 1 1.5 1 2.4v.7h7v-.7c0-.9.3-1.6 1-2.4 1-1 2-2.4 2-4.4 0-3.3-2.9-6-6.5-6z"/><path d="M9.5 20.5h5"/>',
  review:'<path d="M3.5 12a8.5 8.5 0 108.5-8.5c-2.6 0-4.9 1.2-6.4 3"/><path d="M3.6 3.9v3.8h3.8"/><path d="M12 7.8V12l2.8 1.8"/>',
  today:'<path d="M4 19V9"/><path d="M9.3 19V5"/><path d="M14.7 19v-7"/><path d="M20 19v-11"/>',
+ write:'<path d="M4.5 19.5l4.2-1 9-9a2 2 0 00-2.8-2.8l-9 9z"/><path d="M13.6 5.9l2.8 2.8"/><path d="M4 21h16"/>',
  chev:'<path d="M9 5l7 7-7 7"/>',close:'<path d="M6 6l12 12M18 6L6 18"/>'};
 const svg=(n,w=1.7)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
 
@@ -520,7 +531,7 @@ async function sbPushDoc(id,content){
  if(!SB.on||!SB.user)return;
  const r=await sbRest('documents?on_conflict=user_id,id',{method:'POST',
   headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
-  body:JSON.stringify({user_id:SB.user.id,id,content})});
+  body:JSON.stringify({user_id:SB.user.id,id,content:cleanText(content)})});
  if(!r.ok)SB.lastError=await sbWhy(r,'document');
 }
 async function sbGetDoc(id){
@@ -552,14 +563,14 @@ window.addEventListener('pagehide',flushWrites);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushWrites();});
 
 const SCHEMA=2;   // bump when the stored shape changes; migrations run in boot()
-const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'normal',lh:1.68,panel:true,newPerDay:10};
+const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'wide',lh:1.68,panel:true,newPerDay:10};
 const DB={index:{docs:[]},
  knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],writings:[]},
  reviewlogs:[],
  tcache:{},stats:{apiCalls:0,cacheHits:0},prefs:{...DEFAULT_PREFS}};
 const K=DB.knowledge;
 const DOMAINS=['Major / Career','English / Liberal Arts','World / News / Investment','General Knowledge'];
-const WIDTHS={narrow:'34em',normal:'40em',wide:'48em'};
+const WIDTHS={narrow:'34em',normal:'42em',wide:'54em',full:'100%'};
 const KINDLABEL={mark:'Highlight',word:'Word',memo:'Memo'};
 
 const SEED=[
@@ -581,6 +592,7 @@ The trade-off is not free. A thin representation carries less information, and a
 let state={view:'today',docId:null,panel:null,tab:'concepts',wordFilter:'all',hlFilter:'all',
  domain:'all',sort:'recent',query:'',revealed:false,testing:false,testQueue:[],
  briefLoading:false,pickVocab:new Set(),openDoc:null,allLinks:false,
+ editing:null,prompt:null,promptSeed:0,essayText:'',essay:null,
  qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
 
 const $=id=>document.getElementById(id);
@@ -605,6 +617,9 @@ const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
   if(!h.kind)h.kind=K.vocabulary.some(v=>v.sourceHighlightId===h.id)?'word':'mark';});
  K.vocabulary.forEach(v=>{
   if(!v.tags)v.tags=[];
+  if(!v.history)v.history=[];
+  if(v.stability==null)v.stability=Math.max(.5,v.interval||1);
+  if(v.difficulty==null)v.difficulty=clmp(5+(2.5-(v.ease??2.5))*2,1,10);
   if(v.ease==null)v.ease=2.5; if(v.reps==null)v.reps=0;
   if(v.lapses==null)v.lapses=0; if(v.stage==null)v.stage=0; if(v.interval==null)v.interval=0;});
  applyPrefs();
@@ -708,6 +723,7 @@ function paintNav(){
  const items=[['today','Today','today',''],
   ['library','Library','library',DB.index.docs.length],
   ['words','Words','words',dueWords().length||K.vocabulary.length],
+  ['write','Write','write',(K.writings||[]).length],
   ['knowledge','Knowledge','knowledge',K.concepts.length+K.thoughts.length+K.questions.length],
   ['review','Review','review',dueConcepts().length]];
  $nav.innerHTML=items.map(([k,l,ic,n])=>`<button class="navbtn" data-nav="${k}" aria-current="${state.view===k||(k==='library'&&state.view==='reader')}">
@@ -737,9 +753,10 @@ function render(){
  paintNav();paintUsage();
  if(state.query)viewSearch();
  else if(state.view==='library')viewLibrary();
- else if(state.view==='reader')viewReader();
+ else if(state.view==='reader'){readerShownBefore=readerShown;viewReader(true);}
  else if(state.view==='words')viewWords();
  else if(state.view==='knowledge')viewKnowledge();
+ else if(state.view==='write')viewWrite();
  else if(state.view==='review')viewReview();
  else if(state.view==='today'){viewToday();
   if(!DB.briefing&&!state.briefLoading)loadBriefing(false);}
@@ -764,8 +781,14 @@ window.addEventListener('popstate',e=>{
 $main.addEventListener('scroll',()=>{
  $toolbar.classList.toggle('scrolled',$main.scrollTop>26);
  if(state.view==='reader'){const m=meta(state.docId);if(!m)return;
-  const p=Math.min(1,$main.scrollTop/Math.max(1,$main.scrollHeight-$main.clientHeight));
-  if(Math.abs(p-m.progress)>.02){m.progress=p;m.lastReadAt=now();save('pkos:index');}}
+  // Draw more before the reader reaches the end of what exists.
+  if(readerShown<readerBlocks.length&&
+     $main.scrollTop+$main.clientHeight>$main.scrollHeight-1400){
+   growReader(CHUNK);requestAnimationFrame(renderMargins);}
+  const drawn=readerBlocks.length?readerShown/readerBlocks.length:1;
+  const within=Math.min(1,$main.scrollTop/Math.max(1,$main.scrollHeight-$main.clientHeight));
+  const p=Math.min(1,within*drawn);
+  if(Math.abs(p-m.progress)>.01){m.progress=p;m.lastReadAt=now();save('pkos:index');}}
 });
 
 /* ---------- Library ---------- */
@@ -831,6 +854,7 @@ function confirmBig(len){
  return false;
 }
 async function addDoc(title,author,content,domain){
+ content=cleanText(content);
  if(!content.trim())return toast('Nothing to add');
  if(content.length>300000&&!confirmBig(content.length))return;
  const id=uid('doc');
@@ -870,27 +894,61 @@ function knownCount(docId,content){
  knownCache={id:docId,n:K.vocabulary.length,count};
  return count;
 }
-async function viewReader(){
+/* ---------- Reader ----------
+   A novel is a megabyte of text. Building that much DOM in one pass locks the
+   tab for seconds, and doing it again on every highlight makes the book
+   unreadable. So paragraphs are rendered in chunks as the page is scrolled,
+   and the reader remembers how much it has already drawn: the cost of turning
+   a page no longer depends on the length of the book.
+
+   Offsets stay absolute — every paragraph carries its own data-start — so
+   partial rendering does not disturb highlight positions. */
+const CHUNK=140;
+let readerBlocks=[],readerShown=0,readerHls=[],readerMemo={};
+
+function blockHTML(b){
+ const end=b.start+b.text.length;
+ const inside=readerHls.filter(h=>h.start<end&&h.end>b.start);
+ if(!inside.length)return `<p data-start="${b.start}">${esc(b.text)}</p>`;
+ let out='',cur=b.start;
+ inside.forEach(h=>{
+  const a=Math.max(h.start,b.start),z=Math.min(h.end,end);
+  if(a>cur)out+=esc(b.text.slice(cur-b.start,a-b.start));
+  out+=`<mark class="hl" data-k="${h.kind||'mark'}" data-hl="${h.id}"${
+   h.kind==='memo'?` data-i="${readerMemo[h.id]}"`:''}>${esc(b.text.slice(a-b.start,z-b.start))}</mark>`;
+  cur=z;});
+ if(cur<end)out+=esc(b.text.slice(cur-b.start));
+ return `<p data-start="${b.start}">${out}</p>`;
+}
+function growReader(n){
+ const body=$('docbody');if(!body)return;
+ const to=Math.min(readerBlocks.length,readerShown+n);
+ if(to<=readerShown)return;
+ let html='';
+ for(let i=readerShown;i<to;i++)html+=blockHTML(readerBlocks[i]);
+ body.insertAdjacentHTML('beforeend',html);
+ readerShown=to;
+}
+async function viewReader(keep){
  const m=meta(state.docId);if(!m){state.view='library';return render();}
  const d=await loadDoc(state.docId);$tb.textContent=m.title;
- const hls=K.highlights.filter(h=>h.documentId===m.id&&!h.orphaned).sort((a,b)=>a.start-b.start);
- let memoN=0;const memoIdx={};
- hls.forEach(h=>{if(h.kind==='memo')memoIdx[h.id]=++memoN;});
- let pos=0;
- const html=d.content.split('\n').map(line=>{
-  const b={start:pos,text:line};pos+=line.length+1;
-  if(!b.text.trim())return '';
-  const end=b.start+b.text.length,inside=hls.filter(h=>h.start<end&&h.end>b.start);
-  if(!inside.length)return `<p data-start="${b.start}">${esc(b.text)}</p>`;
-  let out='',cur=b.start;
-  inside.forEach(h=>{const s=Math.max(h.start,b.start),e=Math.min(h.end,end);
-   if(s>cur)out+=esc(b.text.slice(cur-b.start,s-b.start));
-   out+=`<mark class="hl" data-k="${h.kind||'mark'}" data-hl="${h.id}"${
-    h.kind==='memo'?` data-i="${memoIdx[h.id]}"`:''}>${esc(b.text.slice(s-b.start,e-b.start))}</mark>`;cur=e;});
-  if(cur<end)out+=esc(b.text.slice(cur-b.start));
-  return `<p data-start="${b.start}">${out}</p>`;}).join('');
+
+ readerHls=K.highlights.filter(h=>h.documentId===m.id&&!h.orphaned).sort((a,b)=>a.start-b.start);
+ readerMemo={};let memoN=0;
+ readerHls.forEach(h=>{if(h.kind==='memo')readerMemo[h.id]=++memoN;});
+
+ readerBlocks=[];let pos=0;
+ for(const line of d.content.split('\n')){
+  if(line.trim())readerBlocks.push({start:pos,text:line});
+  pos+=line.length+1;}
+
  const known=knownCount(m.id,d.content);
  const st=docStat(m);
+ const fresh=lastReaderDoc!==m.id;
+ const prevShown=keep?readerShownBefore:0;
+ const prevScroll=keep?$main.scrollTop:0;
+ readerShown=0;
+
  $view.innerHTML=`<div class="view reader">
   <div class="rhead">
    <div class="rtools">
@@ -901,16 +959,26 @@ async function viewReader(){
    <h1>${esc(m.title)}</h1>
    <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}</div>
   </div>
-  <div class="readwrap" id="readwrap"><div class="doctext" id="docbody">${html}</div>
+  <div class="readwrap" id="readwrap"><div class="doctext" id="docbody"></div>
    <div class="gutter" id="gutter"></div></div></div>`;
- requestAnimationFrame(renderMargins);
- if(lastReaderDoc!==m.id){
-  lastReaderDoc=m.id;
-  if(m.progress>.02)requestAnimationFrame(()=>{
-   $main.scrollTop=m.progress*($main.scrollHeight-$main.clientHeight);
-   renderMargins();toast(`Resumed at ${Math.round(m.progress*100)}%`);});
- }
+
+ // Resuming deep into a book means drawing enough of it to reach that point.
+ const target=fresh&&m.progress>.02?Math.ceil(m.progress*readerBlocks.length):0;
+ growReader(Math.max(CHUNK,prevShown,target+CHUNK));
+
+ requestAnimationFrame(()=>{
+  if(keep){$main.scrollTop=prevScroll;}
+  else if(fresh&&target){
+   const el=$('docbody')?.children[Math.min(target,readerShown-1)];
+   if(el)$main.scrollTop=el.offsetTop-80;
+   toast(`Resumed at ${Math.round(m.progress*100)}%`);
+  }
+  renderMargins();
+ });
+ if(fresh)lastReaderDoc=m.id;
 }
+let readerShownBefore=0;
+
 function renderMargins(){
  const wrap=$('readwrap'),g=$('gutter');if(!wrap||!g)return;
  const wide=$main.clientWidth>=860;
@@ -1121,7 +1189,14 @@ function detailHTML(p){
   ${o.exampleSentence?`<div class="f"><div class="k">Example</div><div class="v">${esc(o.exampleSentence)}</div></div>`:''}
   ${t==='vocabulary'?tagEditor('vocabulary',o):''}
   ${m?`<div class="f"><div class="k">Document</div><button class="btn plain sm" data-open="${m.id}" style="margin-left:-8px">${esc(m.title)}</button></div>`:''}
-  ${o.nextReviewAt?`<div class="f"><div class="k">Next review</div><div class="v">${o.nextReviewAt.slice(0,10)} · stage ${QSHORT[QTYPES[Math.min(4,o.stage||0)]]}</div></div>`:''}
+  ${t==='vocabulary'&&o.reps?`<div class="f"><div class="k">Memory</div><div class="v" style="line-height:1.65">
+   ${Math.round(retrievability(o)*100)}% recalled right now<br>
+   stability ${Math.round(o.stability||0)} days · difficulty ${(o.difficulty||5).toFixed(1)}/10
+   ${(o.history||[]).length?`<br>${(o.history||[]).filter(g=>g>0).length}/${o.history.length} correct
+    <span style="font-family:var(--mono);letter-spacing:2px">${(o.history||[]).map(g=>g===0?'x':'o').join('')}</span>`:''}
+   </div></div>`:''}
+ ${o.nextReviewAt?`<div class="f"><div class="k">Next review</div><div class="v">${o.nextReviewAt.slice(0,10)}${
+   t==='vocabulary'?` · stage ${QSHORT[QTYPES[Math.min(4,o.stage||0)]]}`:''}</div></div>`:''}
   <div class="acts"><button class="btn danger" data-del="${t}:${o.id}">Delete</button></div></div>`);
 }
 function hlHTML(p){
@@ -1152,7 +1227,7 @@ function readSetHTML(){
    <span class="seg tight">${[['serif','Serif'],['sans','Sans'],['mono','Mono']].map(([k,l])=>
     `<button data-font="${k}" aria-current="${(p.font||'serif')===k}">${l}</button>`).join('')}</span></div>
   <div class="setrow"><span class="k">Column width</span>
-   <span class="seg tight">${[['narrow','Narrow'],['normal','Normal'],['wide','Wide']].map(([k,l])=>
+   <span class="seg tight">${[['narrow','Narrow'],['normal','Normal'],['wide','Wide'],['full','Full']].map(([k,l])=>
     `<button data-width="${k}" aria-current="${(p.width||'normal')===k}">${l}</button>`).join('')}</span></div>
   <div class="setrow"><span class="k">Line spacing</span>
    <span class="seg tight">${[[1.5,'Tight'],[1.68,'Normal'],[1.9,'Loose']].map(([k,l])=>
@@ -1312,23 +1387,56 @@ function rollNew(){const t=new Date().toISOString().slice(0,10);
 function buildSession(){
  rollNew();
  const pool=dueWords();
- const seen=pool.filter(v=>v.reps>0).sort((a,b)=>String(a.nextReviewAt||'').localeCompare(String(b.nextReviewAt||'')));
+ // Most-forgotten first: the word closest to being lost is the one worth asking.
+ const seen=pool.filter(v=>v.reps>0).sort((a,b)=>retrievability(a)-retrievability(b));
  const room=Math.max(0,newPerDay()-(DB.stats.newToday||0));
  return [...seen,...pool.filter(v=>!v.reps).slice(0,room)];
+}
+/* Scheduling on a forgetting curve.
+
+   Each word carries a stability S — days until recall is expected to fall to
+   90% — and a difficulty D from 1 to 10. Before each answer we estimate how
+   much was still remembered, and the interval grows more when a word was
+   recalled after it had begun to fade: remembering something you had nearly
+   forgotten is worth more than remembering it a minute after seeing it.
+   Grades also accumulate into a short history, so accuracy is measured rather
+   than guessed at. */
+const RETENTION=0.9;
+const clmp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function retrievability(v){
+ if(!v.lastReviewedAt||!v.stability)return 0;
+ const days=(Date.now()-new Date(v.lastReviewedAt).getTime())/864e5;
+ return Math.exp(Math.log(RETENTION)*days/Math.max(.1,v.stability));
+}
+const GRADE_BONUS=[.7,1,1.35];          // Hard, Good, Easy
+function project(v,g){
+ if(!v.reps)return{d:clmp(6-1.2*g,1,10),s:[.5,1,3,6][g]};
+ const r=retrievability(v);
+ const d=clmp((v.difficulty||5)+.55*(2-g),1,10);
+ if(g===0)return{d,s:Math.max(.4,(v.stability||1)*.38*Math.exp(-.08*(d-5)))};
+ const S=v.stability||1;
+ const f=1+5*((11-d)/10)*Math.pow(S,-.3)*(Math.exp(5*(1-r))-1)*GRADE_BONUS[g-1];
+ return{d,s:Math.min(S*Math.max(1.05,f),1200)};
+}
+function previewDays(v,g){
+ if(g===0)return'10m';
+ const d=project(v,g).s;
+ return d<1?'<1d':d<30?Math.round(d)+'d':d<365?Math.round(d/30)+'mo':(d/365).toFixed(1)+'y';
 }
 function schedule(v,g){
  rollNew();
  if(!v.reps){DB.stats.newToday=(DB.stats.newToday||0)+1;v.introducedAt=now();}
- v.ease=Math.max(1.3,Math.min(3.2,(v.ease||2.5)+[-0.2,-0.15,0,0.15][g]));
+ const p=project(v,g);
+ v.difficulty=p.d;v.stability=p.s;
  v.reps=(v.reps||0)+1;
+ v.history=[...(v.history||[]),g].slice(-12);
  if(g===0){
-  v.lapses=(v.lapses||0)+1;v.interval=0;v.stage=Math.max(0,(v.stage||0)-1);
-  v.nextReviewAt=new Date(Date.now()+6e5).toISOString();
+  v.lapses=(v.lapses||0)+1;v.stage=Math.max(0,(v.stage||0)-1);
+  v.interval=0;v.nextReviewAt=new Date(Date.now()+6e5).toISOString();
   v.reviewStatus='learning';
   if(v.lapses>=5){v.suspended=true;v.tags=[...new Set([...(v.tags||[]),'leech'])];}
  }else{
-  const base=v.interval||((v.lapses||0)?1:(v.reps<=1?1:3));
-  v.interval=Math.max((v.interval||0)+1,Math.round(base*(g===1?1.2:g===2?v.ease:v.ease*1.3)));
+  v.interval=Math.max(1,Math.round(p.s));
   v.nextReviewAt=dayjs(v.interval);v.reviewStatus='review';
   if(g>=2)v.stage=Math.min(4,(v.stage||0)+1);
  }
@@ -1361,6 +1469,7 @@ function viewWords(){
    <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div>
    <div class="m">${(v.tags||[]).map(t=>`<span class="badge">${esc(t)}</span>`).join('')}
     <span>${m?esc(m.title):'Manual'}</span><span>${QSHORT[qtypeFor(v)]}</span>
+    ${v.reps?`<span>${Math.round(retrievability(v)*100)}%</span>`:''}
     ${v.suspended?'<span class="badge">paused</span>':over?'<span class="badge due">due</span>':`<span>${v.nextReviewAt.slice(5,10)}</span>`}</div></button>`;}).join('');
  const session=buildSession();
  $view.innerHTML=`<div class="view">
@@ -1386,8 +1495,8 @@ function viewTest(){
  const type=state.qtype,meaning=v.contextualMeaning||v.meaning||'';
  const total=(state.sessionDone||0)+q.length;
  const pct=Math.round(((state.sessionDone||0)/Math.max(1,total))*100);
- const grades=`<div class="grade">${[['Again','10m'],['Hard','x1.2'],['Good','x'+(v.ease||2.5).toFixed(1)],['Easy','longer']]
-  .map(([l,x],i)=>`<button data-tgrade="${i}">${l}<small>${x}</small></button>`).join('')}</div>`;
+ const grades=`<div class="grade">${['Again','Hard','Good','Easy']
+  .map((l,i)=>`<button data-tgrade="${i}">${l}<small>${previewDays(v,i)}</small></button>`).join('')}</div>`;
  let card='';
  if(type==='choice'){
   if(!state.choices)state.choices=choicesFor(v);
@@ -1441,13 +1550,82 @@ function viewTest(){
  if($('clozein'))$('clozein').focus();
 }
 
+/* ---------- Write ----------
+   Output deserves its own room. The prompt, the words that should appear, the
+   references from today's reading and the past drafts are all here, so writing
+   is a place you go rather than a box at the bottom of another screen.
+   -------------------------------------------------------------------------- */
+function viewWrite(){
+ $tb.textContent='Write';
+ const list=[...(K.writings||[])].reverse();
+ const open=state.editing?list.find(w=>w.id===state.editing):null;
+ const f=state.essay;
+ const prompt=state.prompt||open?.prompt||todayPrompt();
+ const must=K.vocabulary.filter(v=>v.createdAt.slice(0,10)===new Date().toISOString().slice(0,10)).slice(0,4);
+ const refs=todayRefs().slice(0,3);
+ const words=(state.essayText||'').trim().split(/\s+/).filter(Boolean).length;
+ const streak=(()=>{let n=0;for(let i=0;i<60;i++){
+   const d=new Date(Date.now()-i*864e5).toISOString().slice(0,10);
+   if((K.writings||[]).some(w=>w.createdAt.slice(0,10)===d))n++;else if(i)break;}return n;})();
+
+ return $view.innerHTML=`<div class="view">
+  <div class="largetitle"><h1>Write</h1><span class="c">${list.length}</span><span class="spacer"></span>
+   ${streak>1?`<span style="font-size:13px;color:var(--label2)">${streak} day streak</span>`:''}</div>
+
+  <div class="card">
+   <div class="f"><div class="k">Prompt</div>
+    <textarea class="tin" id="promptin" style="width:100%;min-height:48px;line-height:1.5">${esc(prompt)}</textarea>
+    <div class="flexrow" style="gap:6px">
+     <button class="btn sec sm" data-newprompt>Suggest another</button>
+     ${refs.length?`<button class="btn sec sm" data-refprompt>Use a reference</button>`:''}</div></div>
+
+   ${must.length?`<div class="f"><div class="k">Words to work in</div>
+    <div class="tagrow">${must.map(v=>`<span class="tg">${esc(v.word)}</span>`).join('')}</div></div>`:''}
+
+   <div class="f"><div class="k">Draft</div>
+    <textarea class="tin" id="essayin" style="width:100%;min-height:220px;line-height:1.7;font-family:var(--serif);font-size:16px"
+     placeholder="Write in English. Three to five sentences is enough to start.">${esc(state.essayText||'')}</textarea>
+    <div style="font-size:12px;color:var(--label3);margin-top:6px">${words} words</div></div>
+
+   <div class="acts">
+    <button class="btn sm" data-essay ${state.checking?'disabled':''}>${state.checking?'Checking…':'Get feedback'}</button>
+    <button class="btn sec sm" data-essaysave>Save draft</button>
+    ${state.essayText?`<button class="btn sec sm" data-essayreset>Clear</button>`:''}</div>
+  </div>
+
+  ${f?`<div class="card">
+   <div class="f"><div class="k">Rewritten</div>
+    <div style="font-family:var(--serif);font-size:16.5px;line-height:1.65">${esc(f.corrected||'')}</div></div>
+   ${f.note?`<div class="f"><div class="k">Patterns to watch</div><div class="v">${esc(f.note)}</div></div>`:''}
+   ${f.good?`<div class="f"><div class="k">Done well</div><div class="v">${esc(f.good)}</div></div>`:''}
+   ${f.why?`<div class="f"><div class="k">Carry forward</div><div class="v">${esc(f.why)}</div></div>`:''}
+   <div class="acts"><button class="btn sm" data-essaysave>Keep this</button>
+    <button class="btn sec sm" data-usecorrected>Replace my draft with it</button></div></div>`:''}
+
+  ${refs.length?`<h3 class="sec">Today's references</h3>
+   <div class="list">${refs.map(l=>l.url
+    ?`<a class="item" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+       <h4 style="color:var(--blue)">${esc(l.title.slice(0,110))}</h4>
+       <div class="m"><span>${esc(host(l.url))}</span></div></a>`
+    :`<div class="item"><h4>${esc(l.title.slice(0,110))}</h4></div>`).join('')}</div>`:''}
+
+  <h3 class="sec">Past drafts</h3>
+  ${list.length?`<div class="list">${list.map(w=>`<button class="item" data-openw="${w.id}">
+    <h4>${esc((w.prompt||w.body).slice(0,80))}</h4>
+    <div class="b">${esc((w.corrected||w.body).slice(0,140))}</div>
+    <div class="m"><span>${w.createdAt.slice(0,10)}</span>
+     <span>${(w.body||'').trim().split(/\s+/).filter(Boolean).length} words</span>
+     ${w.corrected?'<span class="badge">reviewed</span>':''}</div></button>`).join('')}</div>`
+   :'<div class="empty">Nothing written yet</div>'}
+  </div>`;
+}
+
 /* ---------- Knowledge ---------- */
 function viewKnowledge(){
  $tb.textContent='Knowledge';
  const tabs=[['concepts','Concepts',K.concepts.length],['thoughts','Thoughts',K.thoughts.length],
-  ['questions','Questions',K.questions.length],['writings','Writing',(K.writings||[]).length],
-  ['highlights','Marks',K.highlights.length]];
- if(!['concepts','thoughts','questions','writings','highlights'].includes(state.tab))state.tab='concepts';
+  ['questions','Questions',K.questions.length],['highlights','Marks',K.highlights.length]];
+ if(!['concepts','thoughts','questions','highlights'].includes(state.tab))state.tab='concepts';
  const isHl=state.tab==='highlights';
  let src=[...(K[state.tab]||[])].reverse();
  if(isHl&&state.hlFilter!=='all')src=src.filter(h=>(h.kind||'mark')===state.hlFilter);
@@ -1669,7 +1847,12 @@ function viewToday(){
      ${session.length?'<button class="btn" data-test>Start test</button>':'<span style="font-size:13px;color:var(--label3)">Nothing due</span>'}</div></div>`
   :'<div class="empty">Save a few words first</div>'}
   <h3 class="sec">Write</h3>
-  ${writeCard()}
+  <div class="card"><div class="f"><div class="k">Today's prompt</div>
+   <div class="v" style="font-size:14.5px;line-height:1.55">${esc(todayPrompt())}</div></div>
+   <div class="acts"><button class="btn sm" data-nav="write">Open the writing desk</button>
+    <span style="font-size:12px;color:var(--label3)">${
+     (K.writings||[]).filter(w=>w.createdAt.slice(0,10)===new Date().toISOString().slice(0,10)).length
+      ?'Written today':'Nothing written today yet'}</span></div></div>
   <h3 class="sec">Continue reading</h3>
   ${reading.length?`<div class="list">${reading.map(docRow).join('')}</div>`:'<div class="empty">Nothing in progress</div>'}
   ${qs.length?`<h3 class="sec">Open questions</h3>
@@ -1705,6 +1888,7 @@ document.addEventListener('click',async e=>{
  const T=e.target;
  const th=T.closest('[data-settheme]');
  if(th){DB.prefs.theme=th.dataset.settheme;applyPrefs();store.set('pkos:prefs',DB.prefs);return paintUsage();}
+ if(state.view==='write'&&$('essayin'))state.essayText=$('essayin').value;
  const nav=T.closest('[data-nav]');if(nav)return go(nav.dataset.nav);
  const op=T.closest('[data-open]');if(op)return go('reader',{docId:op.dataset.open});
  const dm=T.closest('[data-dom]');if(dm){state.domain=dm.dataset.dom;return render();}
@@ -1731,17 +1915,40 @@ document.addEventListener('click',async e=>{
  if(T.closest('[data-essay]')){
   const txt=($('essayin')?.value||'').trim();
   if(txt.length<20)return toast('Write a little more');
-  state.essayText=txt;state.checking=true;render();
-  try{const{data}=await llm('essay',txt,todayPrompt(),'en',hash('essay|'+txt));
+  const prompt=($('promptin')?.value||state.prompt||todayPrompt()).trim();
+  state.essayText=txt;state.prompt=prompt;state.checking=true;render();
+  try{const{data}=await llm('essay',txt,prompt,'en',hash('essay|'+txt));
    state.essay=data;}
   catch(e){state.essay={corrected:txt,note:'Could not check: '+e.message};}
   state.checking=false;return render();}
+ if(T.closest('[data-newprompt]')){
+  state.prompt=null;state.promptSeed=(state.promptSeed||0)+1;return render();}
+ if(T.closest('[data-refprompt]')){
+  const r=todayRefs();if(!r.length)return;
+  const l=r[(state.promptSeed=(state.promptSeed||0)+1)%r.length];
+  state.prompt=`On "${l.title.slice(0,100)}": what follows from it, and what do you doubt?`;
+  return render();}
+ const ow=T.closest('[data-openw]');
+ if(ow){const w=(K.writings||[]).find(x=>x.id===ow.dataset.openw);if(!w)return;
+  state.editing=w.id;state.prompt=w.prompt;state.essayText=w.body;
+  state.essay=w.corrected?{corrected:w.corrected,note:w.note}:null;
+  $main.scrollTop=0;return render();}
+ if(T.closest('[data-usecorrected]')){
+  state.essayText=state.essay?.corrected||state.essayText;return render();}
  if(T.closest('[data-essaysave]')){
-  K.writings.push({id:uid('w'),prompt:todayPrompt(),body:state.essayText||'',
-   corrected:state.essay?.corrected||'',note:state.essay?.note||'',
-   createdAt:now(),updatedAt:now(),origin:'user'});
-  state.essay=null;state.essayText='';save('pkos:knowledge');render();return toast('Kept');}
- if(T.closest('[data-essayreset]')){state.essay=null;state.essayText='';return render();}
+  const body=($('essayin')?.value||state.essayText||'').trim();
+  if(!body)return toast('Nothing to save');
+  const prompt=($('promptin')?.value||state.prompt||todayPrompt()).trim();
+  const existing=state.editing?(K.writings||[]).find(w=>w.id===state.editing):null;
+  if(existing){Object.assign(existing,{prompt,body,
+    corrected:state.essay?.corrected||existing.corrected||'',
+    note:state.essay?.note||existing.note||'',updatedAt:now()});}
+  else K.writings.push({id:uid('w'),prompt,body,
+    corrected:state.essay?.corrected||'',note:state.essay?.note||'',
+    createdAt:now(),updatedAt:now(),origin:'user'});
+  state.essay=null;state.essayText='';state.editing=null;state.prompt=null;
+  save('pkos:knowledge');render();return toast(existing?'Updated':'Saved');}
+ if(T.closest('[data-essayreset]')){state.essay=null;state.essayText='';state.editing=null;return render();}
  if(T.closest('[data-account]')){state.panel={type:'account'};return paintPanel();}
  if(T.closest('[data-recheck]')){await sbInit();render();
   return toast(SB.configured?'Supabase is reachable':'Still not configured');}
@@ -1823,7 +2030,7 @@ document.addEventListener('click',async e=>{
  const ds=T.closest('[data-docsave]');
  if(ds){
   const m=meta(ds.dataset.docsave),prev=(docCache[m.id]||{}).content||'';
-  const next=$('dcontent').value;
+  const next=cleanText($('dcontent').value);
   m.title=$('dtitle').value.trim()||m.title;
   m.author=$('dauthor').value.trim();m.domain=$('ddomain').value;m.updatedAt=now();
   let msg='Saved';
@@ -1863,11 +2070,11 @@ document.addEventListener('click',async e=>{
  const kd=T.closest('[data-kind]');
  if(kd){const[id,k]=kd.dataset.kind.split(':');const h=K.highlights.find(x=>x.id===id);
   h.kind=k;h.updatedAt=now();save('pkos:knowledge');
-  if(state.view==='reader')await viewReader();return paintPanel();}
+  if(state.view==='reader'){readerShownBefore=readerShown;await viewReader(true);}return paintPanel();}
  const sn=T.closest('[data-savenote]');
  if(sn){const h=K.highlights.find(x=>x.id===sn.dataset.savenote);
   h.note=($('hlnote')?.value||'').trim();h.updatedAt=now();save('pkos:knowledge');
-  if(state.view==='reader')await viewReader();paintPanel();return toast('Note saved');}
+  if(state.view==='reader'){readerShownBefore=readerShown;await viewReader(true);}paintPanel();return toast('Note saved');}
 
  const mk=T.closest('[data-memokind]');
  if(mk){state.panel.memoKind=mk.dataset.memokind;
@@ -1884,7 +2091,7 @@ document.addEventListener('click',async e=>{
   else K.questions.push({...base,status:p.memoKind==='check'?'Investigating':'Unanswered',answer:''});
   h.note=body.slice(0,140);h.kind='memo';h.updatedAt=now();
   save('pkos:knowledge');state.panel=null;
-  if(state.view==='reader')await viewReader();
+  if(state.view==='reader'){readerShownBefore=readerShown;await viewReader(true);}
   render();return toast('Memo saved');}
 
  const ex=T.closest('[data-explain]');
@@ -1935,7 +2142,7 @@ document.addEventListener('click',async e=>{
  const dl=T.closest('[data-del]');
  if(dl){const[k,id]=dl.dataset.del.split(':');K[k]=K[k].filter(x=>x.id!==id);
   save('pkos:knowledge');state.panel=null;
-  if(state.view==='reader')await viewReader();
+  if(state.view==='reader'){readerShownBefore=readerShown;await viewReader(true);}
   toast('Deleted');return render();}
  if(T.closest('[data-close]')){state.panel=null;return paintPanel();}
  if(T.closest('#addbtn'))return addDoc($('ntitle').value,$('nauthor').value,$('paste').value,$('ndomain').value);
