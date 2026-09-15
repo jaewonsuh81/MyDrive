@@ -155,6 +155,16 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 .item .b{font-size:13px;color:var(--label2);line-height:1.45;white-space:pre-wrap;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .item .m{font-size:12px;color:var(--label3);margin-top:6px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.feed{max-height:210px;overflow:hidden;position:relative;font-family:var(--serif);
+  font-size:15px;line-height:1.62;color:var(--label);
+  -webkit-mask-image:linear-gradient(180deg,#000 62%,transparent 100%);
+  mask-image:linear-gradient(180deg,#000 62%,transparent 100%)}
+.feed.open{max-height:none;-webkit-mask-image:none;mask-image:none}
+.feed p{margin:0 0 .85em}
+.feed .fh{font-family:var(--ui);font-size:12px;font-weight:610;color:var(--label3);
+  margin:16px 0 6px;letter-spacing:.01em}
+.feed .fh:first-child{margin-top:0}
+.feed .fhr{border:none;border-top:1px solid var(--sep);margin:14px 0}
 .tick{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--sep-strong);flex:none;
   display:grid;place-items:center;font-size:12px;color:#fff;margin-top:1px;transition:.14s var(--ease)}
 .tick.on{background:var(--blue);border-color:var(--blue)}
@@ -409,7 +419,8 @@ function storageBytes(){
    project that deliberately has no build step. The anon key is public by
    design; Row Level Security is what keeps one account out of another's rows.
    ======================================================================= */
-const SB={url:null,anon:null,token:null,refresh:null,user:null,on:false,syncing:false,lastError:null};
+const SB={url:null,anon:null,token:null,refresh:null,user:null,on:false,syncing:false,
+ lastError:null,configured:null,warning:null};
 const SB_KEYS={'pkos:index':'index','pkos:knowledge':'knowledge','pkos:reviewlogs':'reviewlogs',
  'pkos:prefs':'prefs','pkos:stats':'stats'};
 const localMeta=()=>{try{return JSON.parse(localStorage.getItem('pkos:meta')||'{}');}catch(e){return {};}};
@@ -417,8 +428,9 @@ const touchMeta=k=>{try{const m=localMeta();m[k]=now();localStorage.setItem('pko
 
 async function sbInit(){
  try{const r=await fetch('/api/config');const j=await r.json();
-  SB.url=j.supabaseUrl;SB.anon=j.supabaseAnonKey;
-  if(j.warning)console.warn(j.warning);}catch(e){}
+  SB.url=j.supabaseUrl;SB.anon=j.supabaseAnonKey;SB.warning=j.warning||null;
+  SB.configured=Boolean(j.supabase);}
+ catch(e){SB.configured=false;SB.warning='Could not reach /api/config';}
  try{const t=JSON.parse(localStorage.getItem('pkos:session')||'null');
   if(t){SB.token=t.access_token;SB.refresh=t.refresh_token;SB.user=t.user;SB.on=Boolean(SB.url&&SB.anon);}}catch(e){}
 }
@@ -451,7 +463,7 @@ async function sbRest(path,init={},retry=true){
  return r;
 }
 async function sbSignIn(email,password,create){
- if(!SB.url||!SB.anon)throw new Error('Supabase is not configured on the server');
+ if(!SB.url||!SB.anon)throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY are not set in Vercel. Add them and redeploy.');
  const j=await sbAuth(create?'signup':'token?grant_type=password',{email,password});
  if(create&&!j.access_token)throw new Error('Check your email to confirm the account, then sign in.');
  sbStore(j);
@@ -552,7 +564,7 @@ The trade-off is not free. A thin representation carries less information, and a
 
 let state={view:'library',docId:null,panel:null,tab:'concepts',wordFilter:'all',hlFilter:'all',
  domain:'all',sort:'recent',query:'',revealed:false,testing:false,testQueue:[],
- briefLoading:false,pickSec:new Set(),pickVocab:new Set(),
+ briefLoading:false,pickVocab:new Set(),openDoc:null,allLinks:false,
  qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
 
 const $=id=>document.getElementById(id);
@@ -1157,8 +1169,21 @@ function accountHTML(p){
    <button class="btn sm" data-pull>Pull from server</button>
    <button class="btn sec sm" data-pushall>Push everything up</button>
    <button class="btn danger" data-signout>Sign out</button></div></div>`);
+ if(SB.configured===false)return shell('Account',`<div class="card">
+  <div class="f"><div class="k">Not set up on the server yet</div>
+   <div class="v" style="line-height:1.55">Sign-in needs two values from your Supabase project.
+   Add them in Vercel, then redeploy.</div></div>
+  <div class="f"><div class="k">Vercel → Settings → Environment Variables</div>
+   <div class="v" style="font-family:var(--mono);font-size:12px;line-height:1.7">
+    SUPABASE_URL<br>SUPABASE_ANON_KEY</div></div>
+  ${SB.warning?`<div class="err">${esc(SB.warning)}</div>`:''}
+  <div class="f"><div class="k">Check</div><div class="v">
+   <a class="btn plain sm" href="/api/config" target="_blank" rel="noopener" style="margin-left:-8px">Open /api/config</a></div></div>
+  <div class="acts"><button class="btn sec sm" data-recheck>Check again</button></div></div>`);
  return shell('Account',`<div class="card">
   ${p?.error?`<div class="err" style="margin-bottom:10px">${esc(p.error)}</div>`:''}
+  <p style="font-size:12px;color:var(--label2);margin:0 0 12px;line-height:1.5">
+   This is a MyDrive account, not your Supabase dashboard login. Pick any email and password.</p>
   <div class="f"><div class="k">Email</div>
    <input class="tin" id="sbemail" type="email" autocomplete="email" style="width:100%" value="${esc(p?.email||'')}"></div>
   <div class="f"><div class="k">Password</div>
@@ -1469,56 +1494,89 @@ async function loadBriefing(force){
 }
 function briefingCard(){
  const b=DB.briefing;
- if(state.briefLoading)return `<div class="card"><span class="spin"></span>Fetching today's briefing…</div>`;
- if(!b)return `<div class="empty" style="padding:18px"><button class="btn sm" data-brief>Load today's briefing</button></div>`;
+ if(state.briefLoading)return `<div class="card"><span class="spin"></span>Fetching today's pages…</div>`;
+ if(!b)return `<div class="empty" style="padding:18px"><button class="btn sm" data-brief>Load today's feed</button></div>`;
  if(b.configured===false)return `<div class="card"><div class="f">
    <div class="k">Notion not connected</div><div class="v">${esc(b.hint||'')}</div></div></div>`;
  if(b.error)return `<div class="err">${esc(b.error)}</div>
    <div class="flexrow"><button class="btn sec sm" data-brief>Try again</button></div>`;
- if(b.empty)return `<div class="card"><div class="v">${esc(b.hint||'Nothing found')}</div></div>`;
+ const docs=b.docs||[];
+ if(!docs.length)return `<div class="card"><div class="v">Nothing found${
+   b.missing?.length?` for ${esc(b.missing.join(', '))}`:''}</div>
+   <div class="acts"><button class="btn sec sm" data-brief>Try again</button></div></div>`;
 
- const secs=(b.sections||[]).map(x=>`<button class="item" data-sec="${x.id}">
-   <div style="display:flex;gap:10px;align-items:flex-start">
-    <span class="tick ${state.pickSec.has(x.id)?'on':''}">${state.pickSec.has(x.id)?'✓':''}</span>
-    <span style="flex:1;min-width:0"><h4>${esc(x.title)}</h4>
-     <div class="b">${esc(x.text.slice(0,150))}</div>
-     <div class="m"><span>${Math.max(1,Math.round(x.chars/1024))} KB</span></div></span></div></button>`).join('');
+ /* The point is to read these here. Each page arrives whole, and the only
+    decision is whether it is worth keeping once read. */
+ const saved=t=>DB.index.docs.some(d=>d.title===t);
+ const cards=docs.map(d=>{
+  const open=state.openDoc===d.key;
+  const already=saved(d.title);
+  return `<div class="card">
+   <div class="flexrow" style="margin:0 0 8px;justify-content:space-between;align-items:baseline">
+    <strong style="font-size:14.5px">${esc(d.title)}</strong>
+    <span style="font-size:12px;color:var(--label3)">${Math.round(d.chars/1000)}k chars</span></div>
+   <div class="feed ${open?'open':''}">${fmtFeed(d.text)}</div>
+   <div class="acts">
+    <button class="btn sec sm" data-expand="${d.key}">${open?'Collapse':'Read it all'}</button>
+    ${already?'<span class="badge">In Library</span>'
+      :`<button class="btn sm" data-keepdoc="${d.key}">Save to Library</button>`}
+    <a class="btn plain sm" href="${esc(d.url)}" target="_blank" rel="noopener">Notion</a>
+   </div></div>`;}).join('');
 
- const fresh=(b.vocab||[]).filter(v=>!K.vocabulary.some(x=>String(x.word).toLowerCase()===v.word.toLowerCase()));
+ const links=b.links||[];
+ const linkList=links.length?`
+  <h3 class="sec">Sources<span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${links.length}</span></h3>
+  <div class="list">${links.slice(0,state.allLinks?60:8).map(l=>
+   `<a class="item" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+     <h4 style="color:var(--blue)">${esc(l.title.slice(0,110))}</h4>
+     <div class="m"><span>${esc(host(l.url))}</span>${l.from?`<span>${esc(l.from)}</span>`:''}</div></a>`).join('')}</div>
+  ${links.length>8?`<div class="flexrow"><button class="btn sec sm" data-alllinks>${
+    state.allLinks?'Show fewer':`Show all ${links.length}`}</button></div>`:''}`
+  :'';
+
+ const all=docs.flatMap(d=>d.vocab||[]);
+ const fresh=all.filter((v,i)=>all.findIndex(x=>x.word.toLowerCase()===v.word.toLowerCase())===i
+   &&!K.vocabulary.some(x=>String(x.word).toLowerCase()===v.word.toLowerCase()));
  const vocab=fresh.map((v,i)=>`<button class="item" data-voc="${i}">
    <div style="display:flex;gap:10px;align-items:flex-start">
     <span class="tick ${state.pickVocab.has(i)?'on':''}">${state.pickVocab.has(i)?'✓':''}</span>
     <span style="flex:1;min-width:0"><h4>${esc(v.word)}</h4>
      <div class="b">${esc(v.meaning)}</div></span></div></button>`).join('');
 
- return `<div class="card">
-   <div class="flexrow" style="margin:0 0 10px;justify-content:space-between">
-    <strong style="font-size:14.5px">${esc(b.title||'Briefing')}</strong>
-    <button class="btn sec sm" data-brief>Refresh</button></div>
-   <div class="v" style="font-size:14.5px;line-height:1.6">${esc(b.summary||'')}</div>
-   ${b.url?`<div style="margin-top:10px"><a class="btn plain sm" href="${esc(b.url)}" target="_blank" rel="noopener" style="margin-left:-8px">Open in Notion</a></div>`:''}
-  </div>
-  <h3 class="sec">Sections<span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${(b.sections||[]).length}</span></h3>
-  <div class="list">${secs||'<div class="item"><div class="b">No sections found</div></div>'}</div>
-  <div class="flexrow">
-   <button class="btn sm" data-keepsec ${state.pickSec.size?'':'disabled'}>Keep ${state.pickSec.size||''} to Library</button>
-   <span style="font-size:12px;color:var(--label3)">Unticked sections are never stored</span></div>
-  ${vocab?`<h3 class="sec">Words from the briefing
+ return `<div class="flexrow" style="margin:0 0 10px;justify-content:flex-end">
+   <button class="btn sec sm" data-brief>Refresh</button></div>
+  ${cards}${linkList}
+  ${vocab?`<h3 class="sec">Words already defined
     <span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${fresh.length} new</span></h3>
    <div class="list">${vocab}</div>
    <div class="flexrow">
     <button class="btn sm" data-keepvoc ${state.pickVocab.size?'':'disabled'}>Add ${state.pickVocab.size||''} to Words</button>
-    <span style="font-size:12px;color:var(--label3)">Already defined, so no lookups are spent</span></div>`
-   :`<h3 class="sec">Words from the briefing</h3><div class="empty">All of today's words are already saved</div>`}`;
+    <span style="font-size:12px;color:var(--label3)">No lookups spent</span></div>`
+   :`<h3 class="sec">Words already defined</h3><div class="empty">All of today's words are saved</div>`}`;
 }
+function host(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(e){return u.slice(0,30);}}
+/* Headings carry the shape of the briefing, so they survive into the preview. */
+function fmtFeed(t){
+ return String(t||'').split('\n').map(l=>{
+  const line=l.trim();
+  if(!line)return '';
+  if(line.startsWith('## ')||line.startsWith('# '))
+   return `<h4 class="fh">${esc(line.replace(/^#+\s*/,''))}</h4>`;
+  if(line.startsWith('### '))return `<h4 class="fh">${esc(line.slice(4))}</h4>`;
+  if(line==='---')return '<hr class="fhr">';
+  return `<p>${esc(line)}</p>`;}).join('');
+}
+
 /* Daily writing. The prompt comes from what was actually read today and the
    constraint from what was actually saved, so there is never a blank page and
    the words get used rather than only collected. */
 function todayPrompt(){
  const b=DB.briefing;
- if(b&&b.sections&&b.sections.length){
-  const i=new Date().getDate()%b.sections.length;
-  return `On today's briefing — ${b.sections[i].title}: what follows from it, and what do you doubt?`;}
+ const links=b?.links||[];
+ if(links.length){
+  const l=links[new Date().getDate()%links.length];
+  return `On today's feed — "${l.title.slice(0,90)}": what follows from it, and what do you doubt?`;}
+ if(b?.docs?.length)return `On ${b.docs[0].title}: which claim is strongest, and which is weakest?`;
  const t=[...K.thoughts].slice(-1)[0];
  if(t)return 'Take your last memo further, in English: '+t.body.slice(0,90);
  const d=DB.index.docs.find(x=>x.progress>.02);
@@ -1643,6 +1701,8 @@ document.addEventListener('click',async e=>{
   state.essay=null;state.essayText='';save('pkos:knowledge');render();return toast('Kept');}
  if(T.closest('[data-essayreset]')){state.essay=null;state.essayText='';return render();}
  if(T.closest('[data-account]')){state.panel={type:'account'};return paintPanel();}
+ if(T.closest('[data-recheck]')){await sbInit();render();
+  return toast(SB.configured?'Supabase is reachable':'Still not configured');}
  const si=T.closest('[data-signin]')||T.closest('[data-signup]');
  if(si){
   const email=($('sbemail')?.value||'').trim(),pw=$('sbpass')?.value||'';
@@ -1660,32 +1720,32 @@ document.addEventListener('click',async e=>{
   for(const d of DB.index.docs){const c=await loadDoc(d.id);await sbPushDoc(d.id,c?.content||'');}
   render();return toast('Everything pushed');}
  if(T.closest('[data-brief]')){await loadBriefing(true);return;}
- const sc=T.closest('[data-sec]');
- if(sc){const id=sc.dataset.sec;
-  state.pickSec.has(id)?state.pickSec.delete(id):state.pickSec.add(id);return render();}
+ const xp=T.closest('[data-expand]');
+ if(xp){state.openDoc=state.openDoc===xp.dataset.expand?null:xp.dataset.expand;return render();}
+ if(T.closest('[data-alllinks]')){state.allLinks=!state.allLinks;return render();}
+ const kdoc=T.closest('[data-keepdoc]');
+ if(kdoc){
+  const d=(DB.briefing?.docs||[]).find(x=>x.key===kdoc.dataset.keepdoc);
+  if(!d)return;
+  const id=uid('doc');
+  DB.index.docs.unshift({id,title:d.title,author:'Notion feed',domain:'World / News / Investment',
+   language:'en',chars:d.text.length,progress:0,createdAt:now(),lastReadAt:null});
+  await store.set('pkos:doc:'+id,{id,content:d.text});docCache[id]={id,content:d.text};
+  save('pkos:index');render();return toast('Saved to Library');}
  const vc=T.closest('[data-voc]');
  if(vc){const i=+vc.dataset.voc;
   state.pickVocab.has(i)?state.pickVocab.delete(i):state.pickVocab.add(i);return render();}
- if(T.closest('[data-keepsec]')){
-  const b=DB.briefing||{};let n=0;
-  for(const x of (b.sections||[])){
-   if(!state.pickSec.has(x.id))continue;
-   const id=uid('doc');
-   DB.index.docs.unshift({id,title:`${b.date||''} ${x.title}`.trim(),author:'Daily Briefing',
-    domain:'World / News / Investment',language:'en',chars:x.text.length,progress:0,
-    createdAt:now(),lastReadAt:null});
-   await store.set('pkos:doc:'+id,{id,content:x.text});docCache[id]={id,content:x.text};n++;}
-  state.pickSec.clear();save('pkos:index');render();return toast(`Kept ${n} to Library`);}
  if(T.closest('[data-keepvoc]')){
-  const b=DB.briefing||{};
-  const fresh=(b.vocab||[]).filter(v=>!K.vocabulary.some(x=>String(x.word).toLowerCase()===v.word.toLowerCase()));
+  const all=(DB.briefing?.docs||[]).flatMap(d=>d.vocab||[]);
+  const fresh=all.filter((v,i)=>all.findIndex(x=>x.word.toLowerCase()===v.word.toLowerCase())===i
+    &&!K.vocabulary.some(x=>String(x.word).toLowerCase()===v.word.toLowerCase()));
   let n=0;
   fresh.forEach((v,i)=>{
    if(!state.pickVocab.has(i))return;
    K.vocabulary.push({id:uid('vocab'),word:v.word,language:'en',meaning:v.meaning,
     contextualMeaning:v.meaning,partOfSpeech:'',pronunciation:'',exampleSentence:'',userExample:'',
     tags:['briefing'],sourceDocumentId:null,sourceHighlightId:null,
-    sourceSentence:v.section?`From the ${v.section} section of ${b.title||'the briefing'}.`:'',
+    sourceSentence:v.section?`From the ${v.section} section of today's feed.`:"From today's feed.",
     difficulty:0,reviewStatus:'new',interval:0,ease:2.5,reps:0,lapses:0,stage:0,
     nextReviewAt:dayjs(1),createdAt:now(),updatedAt:now(),origin:'assisted'});n++;});
   state.pickVocab.clear();knownCache={id:null,n:-1,count:0};
