@@ -149,7 +149,10 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 
 .list{background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);overflow:hidden}
 .row,.item{position:relative;width:100%;text-align:left;transition:background .1s}
-.row{display:flex;align-items:center;gap:13px;padding:12px 14px}
+.row{display:flex;align-items:center;gap:13px;padding:12px 14px;cursor:pointer}
+.rowmenu{flex:none;width:30px;height:30px;border-radius:99px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;line-height:1;color:var(--label3);letter-spacing:1px}
+.rowmenu:hover,.rowmenu:active{background:var(--fill3);color:var(--label)}
 .item{display:block;padding:13px 14px}
 .row+.row::before,.item+.item::before{content:"";position:absolute;left:14px;right:0;top:0;height:1px;background:var(--sep)}
 @media (min-resolution:2dppx){.row+.row::before,.item+.item::before{height:.5px}}
@@ -181,9 +184,8 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
   display:grid;place-items:center;font-size:12px;color:#fff;margin-top:1px;transition:.14s var(--ease)}
 .tick.on{background:var(--blue);border-color:var(--blue)}
 .empty{border:1px dashed var(--sep-strong);border-radius:var(--r2);padding:24px;color:var(--label3);font-size:13.5px;text-align:center}
-.addcard{margin-top:20px;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:15px;transition:.15s var(--ease)}
-.addcard.dragover{border-color:var(--blue);border-style:dashed;background:color-mix(in srgb,var(--blue) 6%,var(--elevated))}
-.addcard textarea{width:100%;min-height:84px;resize:vertical;background:var(--content);border:1px solid var(--sep-strong);
+.view.dragover{outline:2px dashed var(--blue);outline-offset:-2px;background:color-mix(in srgb,var(--blue) 4%,var(--window))}
+#paste{width:100%;min-height:84px;resize:vertical;background:var(--content);border:1px solid var(--sep-strong);
   border-radius:var(--r1);padding:10px;font-size:13.5px;line-height:1.55;outline:none}
 .flexrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
 h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px}
@@ -1008,11 +1010,11 @@ function docRow(d){
  if(st.m)bits.push(st.m+' highlights');
  if(st.n)bits.push(st.n+' memos');
  if(bits.length===1)bits.push(d.language==='ko'?'Korean':'English');
- return `<button class="row" data-open="${d.id}">
+ return `<div class="row" data-open="${d.id}" role="button" tabindex="0">
   <span class="cover">${esc(d.title.trim()[0]||'·')}</span>
   <span class="txt"><h3>${esc(d.title)}</h3><span class="meta">${bits.join(' · ')}</span></span>
   ${pct>2?`<span class="bar"><i style="width:${pct}%"></i></span><span class="pct">${pct}%</span>`:''}
-  <span class="chev">${svg('chev',2.2)}</span></button>`;
+  <button class="rowmenu" data-rowmenu="${d.id}" aria-label="More options">⋯</button></div>`;
 }
 function viewLibrary(){
  $tb.textContent='Library';
@@ -1027,29 +1029,17 @@ function viewLibrary(){
    <span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${list.length}</span></h3>
    <div class="list">${list.map(docRow).join('')}</div>`:'';
  const counts=DB.index.docs.reduce((m,d)=>{m[d.domain]=(m[d.domain]||0)+1;return m;},{});
- $view.innerHTML=`<div class="view">
-  <div class="largetitle"><h1>Library</h1><span class="c">${DB.index.docs.length}</span></div>
+ $view.innerHTML=`<div class="view" id="libview">
+  <div class="largetitle"><h1>Library</h1><span class="c">${DB.index.docs.length}</span>
+   <button class="btn sm" data-adddoc style="margin-left:auto">+ Add</button></div>
   <div class="labelrow">
    <button class="lchip" data-dom="all" aria-current="${state.domain==='all'}">All<span class="n">${DB.index.docs.length}</span></button>
    ${DOMAINS.map(x=>`<button class="lchip" data-dom="${esc(x)}" aria-current="${state.domain===x}">${esc(x.split(' / ')[0])}<span class="n">${counts[x]||0}</span></button>`).join('')}</div>
   <div class="seg">${[['recent','Recent'],['title','Title'],['progress','Progress']]
    .map(([k,l])=>`<button data-sort="${k}" aria-current="${state.sort===k}">${l}</button>`).join('')}</div>
-  ${DB.index.docs.length?'':'<div class="empty">No documents yet</div>'}
+  ${DB.index.docs.length?'':'<div class="empty">No documents yet — drag a file in, or tap + Add</div>'}
   ${sec('Reading now',g.reading)}${sec('Not started',g.unread)}${sec('Finished',g.done)}
-  ${DB.index.docs.length&&!docs.length?'<div class="empty">Nothing in this category</div>':''}
-  <div class="addcard">
-   <div class="flexrow" style="margin:0 0 11px;justify-content:space-between">
-    <strong style="font-size:14.5px;font-weight:590">Add document</strong>
-    <label class="btn sec sm" style="cursor:pointer">Choose file
-     <input type="file" id="file" accept=".txt,.md,.markdown,text/plain,.pdf,application/pdf" hidden></label></div>
-   <div style="font-size:11.5px;color:var(--label3);margin:-6px 0 11px">
-    Drag a file in, or choose one. .txt and .md open instantly. .pdf takes longer — formulas and figures are kept as images, in place.</div>
-   <textarea id="paste" placeholder="Paste text"></textarea>
-   <div class="flexrow">
-    <input class="tin" id="ntitle" placeholder="Title" style="flex:1.4">
-    <input class="tin" id="nauthor" placeholder="Author or source" style="flex:1">
-    <select class="tin" id="ndomain">${DOMAINS.map(x=>`<option>${x}</option>`).join('')}</select>
-    <button class="btn" id="addbtn">Add</button></div></div></div>`;
+  ${DB.index.docs.length&&!docs.length?'<div class="empty">Nothing in this category</div>':''}</div>`;
 }
 /* Browser storage tops out around 5 MB, so a very large paste is worth a
    warning before it silently eats the whole budget. */
@@ -1074,6 +1064,56 @@ const PDF_SCALE=2;              // 2x = crisp on a retina screen without huge fi
 const PDF_INLINE_GAP_MULT=2.4;  // a same-line gap wider than this many avg-char-widths ⇒ probably a formula
 const PDF_ROW_GAP_MULT=1.65;    // a between-line gap taller than this many line-heights ⇒ probably a figure/equation band
 const PDF_MIN_CROP=14;          // ignore anything smaller than this (px) — not worth a whole image asset
+const PDF_COLUMN_GAP_FRAC=0.02;    // a gutter this wide (as a fraction of content width) marks a column break
+const PDF_COLUMN_ROW_COVERAGE=0.08; // a vertical strip counts as "empty" if fewer than this fraction of the
+                                    // page's rows touch it — a few centered titles/page numbers don't disqualify it
+/* Groups items into visual lines by vertical proximity, and sorts those
+   lines top to bottom. Used both for gutter-detection (below, on the whole
+   page) and for final reading order (on one column's items at a time). */
+function buildRows(subItems,col,colLeft,colRight){
+ if(!subItems.length)return[];
+ subItems=[...subItems].sort((a,b)=>a.top-b.top||a.x-b.x);
+ const rs=[];
+ subItems.forEach(it=>{
+  const row=rs.find(r=>Math.abs(r.top-it.top)<it.h*0.5);
+  if(row){row.items.push(it);row.top=Math.min(row.top,it.top);row.bottom=Math.max(row.bottom,it.bottom);}
+  else rs.push({top:it.top,bottom:it.bottom,items:[it],col,colLeft,colRight});
+ });
+ rs.forEach(r=>r.items.sort((a,b)=>a.x-b.x));
+ rs.sort((a,b)=>a.top-b.top);
+ return rs;
+}
+/* A real column gutter is a vertical strip that almost no LINE on the page
+   ever touches — not "zero coverage" (a centered title, author list, or
+   page number is often individually narrow enough to land right in the
+   middle and would wreck a strict all-or-nothing check), but "touched by
+   only a small fraction of the page's lines." Returns the gutter's
+   x-position, or null if the page reads as one column (a report, a novel,
+   a slide) rather than two. */
+function findColumnGutter(items,left,right){
+ const contentW=right-left;
+ if(contentW<=0)return null;
+ const rows=buildRows(items,'tmp',left,right);
+ if(rows.length<8)return null;   // too little text on this page to tell either way
+ const bins=120,binW=contentW/bins,touchCount=new Array(bins).fill(0);
+ rows.forEach(r=>{
+  const touched=new Set();
+  r.items.forEach(it=>{
+   const b0=Math.max(0,Math.floor((it.x-left)/binW)),b1=Math.min(bins-1,Math.ceil((it.x+it.w-left)/binW));
+   for(let b=b0;b<=b1;b++)touched.add(b);
+  });
+  touched.forEach(b=>touchCount[b]++);
+ });
+ const lo=Math.floor(bins*0.30),hi=Math.floor(bins*0.70);   // only look near the middle of the page
+ let bestStart=-1,bestLen=0,curStart=-1;
+ for(let b=lo;b<hi;b++){
+  const empty=touchCount[b]/rows.length<PDF_COLUMN_ROW_COVERAGE;
+  if(empty){if(curStart<0)curStart=b;}
+  else{if(curStart>=0){const len=b-curStart;if(len>bestLen){bestLen=len;bestStart=curStart;}curStart=-1;}}
+ }
+ if(curStart>=0){const len=hi-curStart;if(len>bestLen){bestLen=len;bestStart=curStart;}}
+ return bestLen>=bins*PDF_COLUMN_GAP_FRAC ? left+(bestStart+bestLen/2)*binW : null;
+}
 function pdfLoadLib(){
  if(!window.pdfjsLib)throw new Error('PDF support did not finish loading — check your connection and try again');
  if(!pdfjsLib.GlobalWorkerOptions.workerSrc)
@@ -1114,68 +1154,93 @@ async function extractPdf(file,docId,onProgress){
   await page.render({canvasContext:ctx,viewport}).promise;
 
   // Map every text item into canvas-pixel space (the same combined-matrix
-  // approach pdf.js's own text layer uses internally) and group into rows.
+  // approach pdf.js's own text layer uses internally).
   const tc=await page.getTextContent();
   const items=tc.items.filter(it=>it.str.trim()).map(it=>{
    const m=pdfjsLib.Util.transform(viewport.transform,it.transform);
    const scaleX=Math.hypot(m[0],m[1])||1,scaleY=Math.hypot(m[2],m[3])||1;
    return{str:it.str,x:m[4],yBase:m[5],w:it.width*scaleX,h:it.height*scaleY||scaleY};
   });
+  if(!items.length)continue;
   items.forEach(it=>{it.top=it.yBase-it.h;it.bottom=it.yBase;});
-  items.sort((a,b)=>a.top-b.top||a.x-b.x);
-  const rows=[];
-  items.forEach(it=>{
-   const row=rows.find(r=>Math.abs(r.top-it.top)<it.h*0.5);
-   if(row){row.items.push(it);row.top=Math.min(row.top,it.top);row.bottom=Math.max(row.bottom,it.bottom);}
-   else rows.push({top:it.top,bottom:it.bottom,items:[it]});
-  });
-  rows.sort((a,b)=>a.top-b.top);
-  const contentLeft=Math.min(...items.map(it=>it.x),canvas.width*0.08);
-  const contentRight=Math.max(...items.map(it=>it.x+it.w),canvas.width*0.92);
-  const contentW=contentRight-contentLeft;
+  const contentLeft=Math.min(...items.map(it=>it.x));
+  const contentRight=Math.max(...items.map(it=>it.x+it.w));
 
-  let prevBottom=null,prevLineH=null;
-  for(const row of rows){
-   row.items.sort((a,b)=>a.x-b.x);
+  const gutter=findColumnGutter(items,contentLeft,contentRight);
+
+  /* Single column: read top to bottom, as before. Two columns: read all of
+     the left column down to the next "span" element (something wide enough
+     to cross the gutter — a title, a full-width table, a wide figure),
+     then all of the right column down to the same point, then the span
+     element itself, and repeat. This is what turns "column A line 1,
+     column B line 1, column A line 2…" back into readable prose. */
+  let orderedRows;
+  if(gutter==null){
+   orderedRows=buildRows(items,'single',contentLeft,contentRight);
+  }else{
+   const GAP=6,leftItems=[],rightItems=[],spanItems=[];
+   items.forEach(it=>{
+    if(it.x+it.w<=gutter+GAP)leftItems.push(it);
+    else if(it.x>=gutter-GAP)rightItems.push(it);
+    else spanItems.push(it);
+   });
+   const leftRows=buildRows(leftItems,'left',contentLeft,gutter);
+   const rightRows=buildRows(rightItems,'right',gutter,contentRight);
+   const spanRows=buildRows(spanItems,'span',contentLeft,contentRight);
+   orderedRows=[];let li=0,ri=0;
+   const flushTo=y=>{
+    while(li<leftRows.length&&leftRows[li].top<y)orderedRows.push(leftRows[li++]);
+    while(ri<rightRows.length&&rightRows[ri].top<y)orderedRows.push(rightRows[ri++]);
+   };
+   for(const sr of spanRows){flushTo(sr.top);orderedRows.push(sr);}
+   flushTo(Infinity);
+  }
+
+  let prevBottom=null,prevLineH=null,prevCol=null;
+  for(const row of orderedRows){
+   // Jumping from the bottom of one column back to the top of the next (or
+   // in/out of a spanning element) is a layout jump, not a gap on the
+   // page — it must never be misread as a figure.
+   if(row.col!==prevCol){prevBottom=null;prevLineH=null;}
+   const{colLeft,colRight}=row,colW=colRight-colLeft;
    const lineH=row.bottom-row.top;
-   // Gap since the previous row: tall enough to be a figure/equation band
-   // rather than ordinary line or paragraph spacing?
    if(prevBottom!=null){
     const gap=row.top-prevBottom;
     if(prevLineH&&gap>prevLineH*PDF_ROW_GAP_MULT&&gap>PDF_MIN_CROP&&
-       !pdfRegionIsBlank(ctx,contentLeft,prevBottom+2,contentW,gap-4)){
-     const f=await pdfCropToFigure(canvas,contentLeft,prevBottom+2,contentW,gap-4,'figure',docId,figIdx++);
+       !pdfRegionIsBlank(ctx,colLeft,prevBottom+2,colW,gap-4)){
+     const f=await pdfCropToFigure(canvas,colLeft,prevBottom+2,colW,gap-4,'figure',docId,figIdx++);
      figures.push({...f,offset:content.length});content+=FIG_MARK+'\n';
     }else if(gap>prevLineH*1.15){content+='\n';}   // paragraph break, no figure
    }
    // Gaps within the row: wide space between two words on the same line.
-   let cur=contentLeft;
+   let cur=colLeft;
    for(let i=0;i<row.items.length;i++){
     const it=row.items[i];
     const avgCharW=it.w/Math.max(1,it.str.length);
     const gap=it.x-cur;
-    if(cur>contentLeft&&gap>avgCharW*PDF_INLINE_GAP_MULT&&gap>PDF_MIN_CROP&&
+    if(cur>colLeft&&gap>avgCharW*PDF_INLINE_GAP_MULT&&gap>PDF_MIN_CROP&&
        !pdfRegionIsBlank(ctx,cur,row.top,gap,lineH)){
      const f=await pdfCropToFigure(canvas,cur,row.top,gap,lineH,'formula',docId,figIdx++);
      figures.push({...f,offset:content.length});content+=FIG_MARK;
-    }else if(cur>contentLeft&&gap>avgCharW*0.4){content+=' ';}
+    }else if(cur>colLeft&&gap>avgCharW*0.4){content+=' ';}
     content+=it.str;cur=it.x+it.w;
    }
-   const rightShort=(contentRight-cur)>contentW*0.12;   // line ended early ⇒ end of paragraph
+   const rightShort=(colRight-cur)>colW*0.12;   // line ended early ⇒ end of paragraph
    content+=rightShort?'\n':' ';
-   prevBottom=row.bottom;prevLineH=lineH;
+   prevBottom=row.bottom;prevLineH=lineH;prevCol=row.col;
   }
   content+='\n';
  }
  return{content:cleanText(content),figures};
 }
-async function addDoc(title,author,content,domain,figures,presetId){
+async function addDoc(title,author,content,domain,figures,presetId,originalUrl){
  content=cleanText(content);
  if(!content.trim())return toast('Nothing to add');
  if(content.length>300000&&!confirmBig(content.length))return;
  const id=presetId||uid('doc');
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
-  language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null});
+  language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null,
+  originalUrl:(originalUrl||'').trim()||undefined});
  await store.set('pkos:doc:'+id,{id,content,figures:figures||[]});cacheDoc(id,{id,content,figures:figures||[]});save('pkos:index');
  // Adding a whole document is a big enough moment to skip the usual
  // debounce (300ms locally, 3.5s to the server) and push right away —
@@ -1480,7 +1545,8 @@ function paintPanel(){
   return;}
  $panel.classList.add('open');
  const H={result:resultHTML,memo:memoHTML,compose:composeHTML,detail:detailHTML,hl:hlHTML,
-          docedit:docEditHTML,readset:readSetHTML,diag:diagHTML,data:dataHTML,account:accountHTML};
+          docedit:docEditHTML,readset:readSetHTML,diag:diagHTML,data:dataHTML,account:accountHTML,
+          rowmenu:rowMenuHTML,adddoc:addDocPanelHTML};
  $panel.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
  const f=$panel.querySelector('textarea')||$panel.querySelector('input');if(f)f.focus();
 }
@@ -1593,6 +1659,37 @@ function readSetHTML(){
   <div class="setrow"><span class="k">New words per day</span>
    <input class="numin" id="newnum" type="number" min="1" max="60" value="${p.newPerDay||10}"></div>
   </div>`);
+}
+function addDocPanelHTML(p){
+ return shell('Add document',`<div class="card">
+  <div class="f">
+   <label class="btn sec sm" style="cursor:pointer">Choose file
+    <input type="file" id="file" accept=".txt,.md,.markdown,text/plain,.pdf,application/pdf" hidden></label>
+   <div style="font-size:11.5px;color:var(--label3);margin-top:8px;line-height:1.45">
+    Or drag a file onto the Library screen any time, panel open or not.
+    .txt and .md open instantly. .pdf takes longer — formulas and figures are kept as images, in place.</div></div>
+  <div class="f"><div class="k">Or paste text</div>
+   <textarea id="paste" placeholder="Paste text" style="width:100%;min-height:120px"></textarea></div>
+  <div class="f flexrow">
+   <input class="tin" id="ntitle" placeholder="Title" style="flex:1.4">
+   <input class="tin" id="nauthor" placeholder="Author or source" style="flex:1"></div>
+  <div class="f"><div class="k">Domain</div>
+   <select class="tin" id="ndomain" style="width:100%">${DOMAINS.map(x=>`<option>${x}</option>`).join('')}</select></div>
+  <div class="f"><div class="k">Original file link (optional)</div>
+   <input class="tin" id="nsrclink" style="width:100%" placeholder="Google Drive, Dropbox, anywhere"></div>
+  <div class="acts">
+   <button class="btn" id="addbtn">Add</button>
+   <button class="btn sec sm" data-close>Cancel</button></div></div>`);
+}
+function rowMenuHTML(p){ const m=p.item;
+ return shell('Document',`<div class="card">
+  <div class="f"><div class="k">${esc(m.title)}</div>
+   <div class="v" style="color:var(--label2)">${esc(m.author||'Unknown')}</div></div>
+  <div class="acts">
+   <button class="btn sm" data-open="${m.id}">Open</button>
+   <button class="btn sec sm" data-editdoc="${m.id}">Edit</button>
+   <button class="btn sec sm" data-close>Cancel</button>
+   <button class="btn danger" data-docdel="${m.id}">${state.confirmDel===m.id?'Tap again to delete':'Delete document'}</button></div></div>`);
 }
 function docEditHTML(p){
  const m=p.item,d=docCache[m.id];
@@ -1756,7 +1853,7 @@ async function recoverOrphanDocs(){
  if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
  else toast('Found entries but could not read their content');
 }
-const BUILD='2026-09-18-pdf3';   // bump this string on every future patch, purely so a stale deploy is easy to spot
+const BUILD='2026-09-18-ui1-addbtn-rowmenu';   // bump this string on every future patch, purely so a stale deploy is easy to spot
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
   <div class="f"><div class="k">Build</div><div class="v">${esc(BUILD)} · pdf.js ${window.pdfjsLib?'loaded':'⚠ NOT loaded'}</div></div>
@@ -2304,6 +2401,9 @@ document.addEventListener('click',async e=>{
  if(th){DB.prefs.theme=th.dataset.settheme;applyPrefs();store.set('pkos:prefs',DB.prefs);return paintUsage();}
  if(state.view==='write'&&$('essayin'))state.essayText=$('essayin').value;
  const nav=T.closest('[data-nav]');if(nav)return go(nav.dataset.nav);
+ const rm=T.closest('[data-rowmenu]');
+ if(rm){state.panel={type:'rowmenu',item:meta(rm.dataset.rowmenu)};return paintPanel();}
+ if(T.closest('[data-adddoc]')){state.panel={type:'adddoc'};return paintPanel();}
  const op=T.closest('[data-open]');if(op)return go('reader',{docId:op.dataset.open});
  const dm=T.closest('[data-dom]');if(dm){state.domain=dm.dataset.dom;return render();}
  const so=T.closest('[data-sort]');if(so){state.sort=so.dataset.sort;return render();}
@@ -2572,7 +2672,11 @@ document.addEventListener('click',async e=>{
   if(state.view==='reader'){readerShownBefore=readerShown;await viewReader(true);}
   toast('Deleted');return render();}
  if(T.closest('[data-close]')){state.panel=null;return paintPanel();}
- if(T.closest('#addbtn'))return addDoc($('ntitle').value,$('nauthor').value,$('paste').value,$('ndomain').value);
+ if(T.closest('#addbtn')){
+  const url=$('nsrclink')?.value.trim();
+  await addDoc($('ntitle').value,$('nauthor').value,$('paste').value,$('ndomain').value,null,null,url);
+  if(state.panel?.type==='adddoc'){state.panel=null;paintPanel();}
+  return;}
  if(!T.closest('.callout')&&!T.closest('.actionbar'))killCo();
  }catch(err){console.error(err);toast('Error: '+(err.message||err));}
 });
@@ -2649,14 +2753,14 @@ async function handleFilePick(f){
  r.readAsText(f);
 }
 document.addEventListener('dragover',e=>{
- const c=e.target.closest?.('.addcard');if(!c)return;
+ const c=document.getElementById('libview');if(!c)return;
  e.preventDefault();c.classList.add('dragover');
 });
 document.addEventListener('dragleave',e=>{
- const c=e.target.closest?.('.addcard');if(c&&!c.contains(e.relatedTarget))c.classList.remove('dragover');
+ const c=document.getElementById('libview');if(c&&!c.contains(e.relatedTarget))c.classList.remove('dragover');
 });
 document.addEventListener('drop',e=>{
- const c=e.target.closest?.('.addcard');if(!c)return;
+ const c=document.getElementById('libview');if(!c)return;
  e.preventDefault();c.classList.remove('dragover');
  handleFilePick(e.dataTransfer.files[0]);
 });
