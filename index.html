@@ -11,6 +11,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MyDrive">
+<!-- PDF text/page extraction. Runs entirely in the browser — no server route,
+     no per-page API cost. Pinned version so a library update never silently
+     changes extraction behavior underfoot. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.js"></script>
 <style>
 :root{
   --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Apple SD Gothic Neo","Pretendard Variable",Pretendard,system-ui,sans-serif;
@@ -194,6 +198,15 @@ h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px
 .readfont-mono .doctext{font-family:var(--mono);font-size:calc(var(--read,19px)*.92)}
 .doctext p{margin:0 0 1.3em;white-space:pre-wrap}
 .doctext ::selection{background:color-mix(in srgb,var(--blue) 26%,transparent)}
+/* Inline formula crop: sits mid-sentence, so it's sized off the current
+   line height rather than a fixed pixel height — it stays legible whether
+   the reader has bumped the font size up or down. */
+.docformula{display:inline-block;vertical-align:-0.15em;max-height:1.7em;width:auto;
+  max-width:100%;margin:0 .1em;background:var(--fill1);border-radius:3px;
+  -webkit-user-select:none;user-select:none}
+/* A standalone figure/photo breaks the paragraph flow, unlike a formula. */
+.docfig{display:block;max-width:100%;height:auto;margin:1.3em auto;border-radius:var(--r2);
+  background:var(--fill1);-webkit-user-select:none;user-select:none}
 
 /* three roles, three treatments */
 mark.hl{color:inherit;padding:.05em 0;border-radius:2px;cursor:pointer;background:var(--hl-mark);
@@ -455,7 +468,7 @@ async function pushRemote(){
   try{
    if(k.startsWith('pkos:doc:')){
     const doc=mem[k]||await store.get(k);
-    await sbPushDoc(k.slice(9),doc?.content||'');
+    await sbPushDoc(k.slice(9),doc?.content||'',doc?.figures||[]);
    }else{
     const v=dbValue(k);
     if(v===undefined)continue;
@@ -604,24 +617,46 @@ async function sbPushState(localKey,value){
   body:JSON.stringify({user_id:SB.user.id,key,value})});
  if(!r.ok)SB.lastError=await sbWhy(r,'state '+key);
 }
-async function sbPushDoc(id,content){
+async function sbPushDoc(id,content,figures){
  if(!SB.on||!SB.user)return;
  const r=await sbRest('documents?on_conflict=user_id,id',{method:'POST',
   headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
-  body:JSON.stringify({user_id:SB.user.id,id,content:cleanText(content)})});
+  body:JSON.stringify({user_id:SB.user.id,id,content:cleanText(content),figures:figures||[]})});
  if(!r.ok)SB.lastError=await sbWhy(r,'document');
 }
 async function sbGetDoc(id){
  if(!SB.on)return null;
- const r=await sbRest(`documents?id=eq.${encodeURIComponent(id)}&select=content`);
+ const r=await sbRest(`documents?id=eq.${encodeURIComponent(id)}&select=content,figures`);
  if(!r.ok)return null;
  const rows=await r.json();
- return rows[0]?{id,content:rows[0].content}:null;
+ return rows[0]?{id,content:rows[0].content,figures:rows[0].figures||[]}:null;
 }
 async function sbDeleteDoc(id){
  if(!SB.on)return;
  await sbRest(`documents?id=eq.${encodeURIComponent(id)}`,{method:'DELETE'});
 }
+/* Cropped formula/figure images live in Supabase Storage, not the database —
+   a document's text is a handful of KB and belongs in a row; a few hundred
+   small images belong in object storage. The bucket is public (see the SQL
+   below) so a plain <img src> can load them with no auth header, and paths
+   are namespaced by user id and a random document id, so nothing is
+   guessable or listable without already knowing the exact path. */
+const ASSET_BUCKET='doc-assets';
+async function sbUploadAsset(path,blob){
+ if(!SB.on||!SB.user)throw new Error('Sign in first — images need somewhere to live');
+ const r=await fetch(`${SB.url}/storage/v1/object/${ASSET_BUCKET}/${path}`,{
+  method:'POST',headers:{apikey:SB.anon,Authorization:'Bearer '+SB.token,
+   'Content-Type':blob.type||'image/webp','x-upsert':'true'},body:blob});
+ if(!r.ok)throw new Error('Image upload failed: '+r.status);
+ return sbAssetUrl(path);
+}
+async function sbDeleteAssets(paths){
+ if(!SB.on||!paths.length)return;
+ try{await fetch(`${SB.url}/storage/v1/object/${ASSET_BUCKET}`,{method:'DELETE',
+  headers:{apikey:SB.anon,Authorization:'Bearer '+SB.token,'Content-Type':'application/json'},
+  body:JSON.stringify({prefixes:paths})});}catch(e){/* best-effort cleanup */}
+}
+const sbAssetUrl=path=>`${SB.url}/storage/v1/object/public/${ASSET_BUCKET}/${path}`;
 
 let wt=null,dirty=new Set();
 function save(...keys){keys.forEach(k=>dirty.add(k));clearTimeout(wt);wt=setTimeout(flushWrites,300);}
@@ -840,8 +875,8 @@ function paintUsage(){
   ? `<button class="u" data-account style="width:100%;padding:2px 0">
       <span style="color:var(--label2)">${SB.syncing?'Syncing…':'Synced'}</span>
       <b style="color:${SB.lastError?'#FF9500':'#34C759'};font-size:11px">${esc((SB.user?.email||'account').split('@')[0])}</b></button>`
-  : `<button class="u" data-account style="width:100%;padding:2px 0">
-      <span style="color:var(--label2)">This device only</span>
+  : `<button class="u" data-account style="width:100%;padding:4px 8px;margin:2px -8px;border-radius:8px;background:color-mix(in srgb,#FF9500 14%,transparent)">
+      <span style="color:#FF9500;font-weight:510">⚠ Not synced — this device only</span>
       <b style="color:var(--blue);font-size:11px">Sign in</b></button>`;
  $usage.innerHTML=acct+
   `<button class="u" data-data style="width:100%;padding:2px 0">
@@ -958,7 +993,9 @@ function viewLibrary(){
    <div class="flexrow" style="margin:0 0 11px;justify-content:space-between">
     <strong style="font-size:14.5px;font-weight:590">Add document</strong>
     <label class="btn sec sm" style="cursor:pointer">Choose file
-     <input type="file" id="file" accept=".txt,.md,.markdown,text/plain" hidden></label></div>
+     <input type="file" id="file" accept=".txt,.md,.markdown,text/plain,.pdf,application/pdf" hidden></label></div>
+   <div style="font-size:11.5px;color:var(--label3);margin:-6px 0 11px">
+    .txt and .md open instantly. .pdf takes longer — formulas and figures are kept as images, in place.</div>
    <textarea id="paste" placeholder="Paste text"></textarea>
    <div class="flexrow">
     <input class="tin" id="ntitle" placeholder="Title" style="flex:1.4">
@@ -975,14 +1012,123 @@ function confirmBig(len){
  toast(`That document is ${fmtBytes(len)}. Press Add again to confirm.`);
  return false;
 }
-async function addDoc(title,author,content,domain){
+/* ---------- PDF extraction ----------
+   No AI, no server route: pdf.js gives us the real text layer directly, and
+   whatever ISN'T text (a formula drawn as vector curves, an embedded photo)
+   shows up as a gap — either a wide space inside a line, or a stretch of
+   vertical room between lines that's too tall to be normal paragraph
+   spacing. Both gap types are cropped from the already-rendered page canvas
+   the same way; a crop close to the full text width renders as a standalone
+   figure, a narrow one renders inline. This is a heuristic, tuned on
+   ordinary textbook layouts — the three constants below are the knobs to
+   turn if it's over- or under-cropping on a real file. */
+const PDF_SCALE=2;              // 2x = crisp on a retina screen without huge files
+const PDF_INLINE_GAP_MULT=2.4;  // a same-line gap wider than this many avg-char-widths ⇒ probably a formula
+const PDF_ROW_GAP_MULT=1.65;    // a between-line gap taller than this many line-heights ⇒ probably a figure/equation band
+const PDF_MIN_CROP=14;          // ignore anything smaller than this (px) — not worth a whole image asset
+function pdfLoadLib(){
+ if(!window.pdfjsLib)throw new Error('PDF support did not finish loading — check your connection and try again');
+ if(!pdfjsLib.GlobalWorkerOptions.workerSrc)
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.js';
+}
+/* Is this rectangle of the rendered page actually blank? Checked before
+   spending an upload on it — a big paragraph gap is usually just a
+   paragraph gap, not a missed figure. */
+function pdfRegionIsBlank(ctx,x,y,w,h){
+ x=Math.max(0,Math.round(x));y=Math.max(0,Math.round(y));
+ w=Math.round(w);h=Math.round(h);
+ if(w<=0||h<=0)return true;
+ const{data}=ctx.getImageData(x,y,w,h);
+ let sum=0,sumSq=0,n=data.length/4;
+ for(let i=0;i<data.length;i+=4){const v=(data[i]+data[i+1]+data[i+2])/3;sum+=v;sumSq+=v*v;}
+ const mean=sum/n,variance=sumSq/n-mean*mean;
+ return variance<6;   // near-uniform colour = nothing drawn here
+}
+async function pdfCropToFigure(canvas,x,y,w,h,kind,docId,figIdx){
+ const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(h));
+ c.getContext('2d').drawImage(canvas,Math.round(x),Math.round(y),c.width,c.height,0,0,c.width,c.height);
+ const blob=await new Promise(res=>c.toBlob(res,'image/webp',0.92));
+ const path=`${SB.user.id}/${docId}/${figIdx}.webp`;
+ const url=await sbUploadAsset(path,blob);
+ return{path,url,kind,w:c.width,h:c.height};
+}
+async function extractPdf(file,docId,onProgress){
+ pdfLoadLib();
+ const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+ let content='';const figures=[];let figIdx=0;
+ for(let pageNum=1;pageNum<=pdf.numPages;pageNum++){
+  onProgress?.(pageNum,pdf.numPages,figures.length);
+  const page=await pdf.getPage(pageNum);
+  const viewport=page.getViewport({scale:PDF_SCALE});
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  await page.render({canvasContext:ctx,viewport}).promise;
+
+  // Map every text item into canvas-pixel space (the same combined-matrix
+  // approach pdf.js's own text layer uses internally) and group into rows.
+  const tc=await page.getTextContent();
+  const items=tc.items.filter(it=>it.str.trim()).map(it=>{
+   const m=pdfjsLib.Util.transform(viewport.transform,it.transform);
+   const scaleX=Math.hypot(m[0],m[1])||1,scaleY=Math.hypot(m[2],m[3])||1;
+   return{str:it.str,x:m[4],yBase:m[5],w:it.width*scaleX,h:it.height*scaleY||scaleY};
+  });
+  items.forEach(it=>{it.top=it.yBase-it.h;it.bottom=it.yBase;});
+  items.sort((a,b)=>a.top-b.top||a.x-b.x);
+  const rows=[];
+  items.forEach(it=>{
+   const row=rows.find(r=>Math.abs(r.top-it.top)<it.h*0.5);
+   if(row){row.items.push(it);row.top=Math.min(row.top,it.top);row.bottom=Math.max(row.bottom,it.bottom);}
+   else rows.push({top:it.top,bottom:it.bottom,items:[it]});
+  });
+  rows.sort((a,b)=>a.top-b.top);
+  const contentLeft=Math.min(...items.map(it=>it.x),canvas.width*0.08);
+  const contentRight=Math.max(...items.map(it=>it.x+it.w),canvas.width*0.92);
+  const contentW=contentRight-contentLeft;
+
+  let prevBottom=null,prevLineH=null;
+  for(const row of rows){
+   row.items.sort((a,b)=>a.x-b.x);
+   const lineH=row.bottom-row.top;
+   // Gap since the previous row: tall enough to be a figure/equation band
+   // rather than ordinary line or paragraph spacing?
+   if(prevBottom!=null){
+    const gap=row.top-prevBottom;
+    if(prevLineH&&gap>prevLineH*PDF_ROW_GAP_MULT&&gap>PDF_MIN_CROP&&
+       !pdfRegionIsBlank(ctx,contentLeft,prevBottom+2,contentW,gap-4)){
+     const f=await pdfCropToFigure(canvas,contentLeft,prevBottom+2,contentW,gap-4,'figure',docId,figIdx++);
+     figures.push({...f,offset:content.length});content+=FIG_MARK+'\n';
+    }else if(gap>prevLineH*1.15){content+='\n';}   // paragraph break, no figure
+   }
+   // Gaps within the row: wide space between two words on the same line.
+   let cur=contentLeft;
+   for(let i=0;i<row.items.length;i++){
+    const it=row.items[i];
+    const avgCharW=it.w/Math.max(1,it.str.length);
+    const gap=it.x-cur;
+    if(cur>contentLeft&&gap>avgCharW*PDF_INLINE_GAP_MULT&&gap>PDF_MIN_CROP&&
+       !pdfRegionIsBlank(ctx,cur,row.top,gap,lineH)){
+     const f=await pdfCropToFigure(canvas,cur,row.top,gap,lineH,'formula',docId,figIdx++);
+     figures.push({...f,offset:content.length});content+=FIG_MARK;
+    }else if(cur>contentLeft&&gap>avgCharW*0.4){content+=' ';}
+    content+=it.str;cur=it.x+it.w;
+   }
+   const rightShort=(contentRight-cur)>contentW*0.12;   // line ended early ⇒ end of paragraph
+   content+=rightShort?'\n':' ';
+   prevBottom=row.bottom;prevLineH=lineH;
+  }
+  content+='\n';
+ }
+ return{content:cleanText(content),figures};
+}
+async function addDoc(title,author,content,domain,figures,presetId){
  content=cleanText(content);
  if(!content.trim())return toast('Nothing to add');
  if(content.length>300000&&!confirmBig(content.length))return;
- const id=uid('doc');
+ const id=presetId||uid('doc');
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
   language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null});
- await store.set('pkos:doc:'+id,{id,content});cacheDoc(id,{id,content});save('pkos:index');
+ await store.set('pkos:doc:'+id,{id,content,figures:figures||[]});cacheDoc(id,{id,content,figures:figures||[]});save('pkos:index');
  go('reader',{docId:id});toast('Document added');
 }
 /* Editing source text shifts every offset after the edit, so each highlight
@@ -1026,20 +1172,44 @@ function knownCount(docId,content){
    Offsets stay absolute — every paragraph carries its own data-start — so
    partial rendering does not disturb highlight positions. */
 const CHUNK=140;
-let readerBlocks=[],readerShown=0,readerHls=[],readerMemo={};
+let readerBlocks=[],readerShown=0,readerHls=[],readerMemo={},readerFigures=[];
 
+/* A figure/formula marker is a single U+FFFC (the Unicode "object
+   replacement character" — the correct code point for exactly this: "an
+   object was here") sitting inline in the plain-text content, at a known
+   offset. It costs the highlight/search/offset machinery nothing: it's
+   just one more character, so nothing about how highlights are stored or
+   reanchored has to change. Rendering is the only place that treats it
+   specially — everywhere else in the app it's inert. */
+const FIG_MARK='\uFFFC';
+function figureHTML(f){
+ const cls=f.kind==='figure'?'docfig':'docformula';
+ return `<img class="${cls}" src="${esc(f.url)}" alt="${f.kind==='figure'?'Figure':'Formula'}" loading="lazy"${
+  f.w&&f.h?` style="aspect-ratio:${f.w}/${f.h}"`:''}>`;
+}
 function blockHTML(b){
  const end=b.start+b.text.length;
- const inside=readerHls.filter(h=>h.start<end&&h.end>b.start);
- if(!inside.length)return `<p data-start="${b.start}">${esc(b.text)}</p>`;
+ const hls=readerHls.filter(h=>h.start<end&&h.end>b.start);
+ const figs=readerFigures.filter(f=>f.offset>=b.start&&f.offset<end);
+ // The overwhelming majority of blocks (every plain-text document, and
+ // most paragraphs even in a PDF-derived one) have neither — keep that
+ // case a single escape call, not a walk through empty arrays.
+ if(!hls.length&&!figs.length)return `<p data-start="${b.start}">${esc(b.text)}</p>`;
+ const emit=(from,to)=>{
+  let s=from,out2='';
+  figs.filter(f=>f.offset>=from&&f.offset<to).sort((a,c)=>a.offset-c.offset).forEach(f=>{
+   if(f.offset>s)out2+=esc(b.text.slice(s-b.start,f.offset-b.start));
+   out2+=figureHTML(f);s=f.offset+1;});
+  if(s<to)out2+=esc(b.text.slice(s-b.start,to-b.start));
+  return out2;};
  let out='',cur=b.start;
- inside.forEach(h=>{
+ hls.sort((a,c)=>a.start-c.start).forEach(h=>{
   const a=Math.max(h.start,b.start),z=Math.min(h.end,end);
-  if(a>cur)out+=esc(b.text.slice(cur-b.start,a-b.start));
+  if(a>cur)out+=emit(cur,a);
   out+=`<mark class="hl" data-k="${h.kind||'mark'}" data-hl="${h.id}"${
-   h.kind==='memo'?` data-i="${readerMemo[h.id]}"`:''}>${esc(b.text.slice(a-b.start,z-b.start))}</mark>`;
+   h.kind==='memo'?` data-i="${readerMemo[h.id]}"`:''}>${emit(a,z)}</mark>`;
   cur=z;});
- if(cur<end)out+=esc(b.text.slice(cur-b.start));
+ if(cur<end)out+=emit(cur,end);
  return `<p data-start="${b.start}">${out}</p>`;
 }
 function growReader(n){
@@ -1064,6 +1234,7 @@ async function viewReader(keep){
   return;}
 
  readerHls=K.highlights.filter(h=>h.documentId===m.id&&!h.orphaned).sort((a,b)=>a.start-b.start);
+ readerFigures=d.figures||[];
  readerMemo={};let memoN=0;
  readerHls.forEach(h=>{if(h.kind==='memo')readerMemo[h.id]=++memoN;});
 
@@ -1087,7 +1258,8 @@ async function viewReader(keep){
     <button class="btn sec sm" data-readset>Aa</button>
     <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div>
    <h1>${esc(m.title)}</h1>
-   <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}</div>
+   <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}${
+    m.originalUrl?` · <a href="${esc(m.originalUrl)}" target="_blank" rel="noopener">Open original ↗</a>`:''}</div>
   </div>
   <div class="readwrap" id="readwrap"><div class="doctext" id="docbody"></div>
    <div class="gutter" id="gutter"></div></div></div>`;
@@ -1371,15 +1543,26 @@ function readSetHTML(){
 }
 function docEditHTML(p){
  const m=p.item,d=docCache[m.id];
+ const hasFigs=(d?.figures||[]).length>0;
+ // The image position markers are one invisible character each — editable
+ // as raw text, they'd be a landmine (delete one by accident, that image's
+ // spot is gone). Shown here as literal "[image]" instead, swapped back to
+ // the real marker on save.
+ const editText=hasFigs?(d.content||'').split(FIG_MARK).join('[image]'):(d?.content||'');
  return shell('Document',`<div class="card">
   <div class="f"><div class="k">Title</div><input class="tin" id="dtitle" style="width:100%" value="${esc(m.title)}"></div>
   <div class="f"><div class="k">Author or source</div><input class="tin" id="dauthor" style="width:100%" value="${esc(m.author||'')}"></div>
   <div class="f"><div class="k">Domain</div><select class="tin" id="ddomain" style="width:100%">${DOMAINS.map(x=>
    `<option ${m.domain===x?'selected':''}>${x}</option>`).join('')}</select></div>
+  <div class="f"><div class="k">Original file link (optional)</div>
+   <input class="tin" id="dsrclink" style="width:100%" placeholder="Google Drive, Dropbox, anywhere" value="${esc(m.originalUrl||'')}">
+   <div style="font-size:11.5px;color:var(--label3);margin-top:6px">
+    Paste a link to the original file if you keep one — it shows as a small "Open original" link when reading, for whenever you need the exact source (printing, submitting, etc.).</div></div>
   <div class="f"><div class="k">Text</div>
-   <textarea class="tin" id="dcontent" style="width:100%;min-height:220px;line-height:1.55;font-family:var(--serif);font-size:14px">${esc(d?.content||'')}</textarea>
+   <textarea class="tin" id="dcontent" style="width:100%;min-height:220px;line-height:1.55;font-family:var(--serif);font-size:14px">${esc(editText)}</textarea>
    <div style="font-size:11.5px;color:var(--label3);margin-top:6px;line-height:1.45">
-    Highlights re-attach to their own text after an edit. Any that can no longer be found are flagged, not deleted.</div></div>
+    Highlights re-attach to their own text after an edit. Any that can no longer be found are flagged, not deleted.
+    ${hasFigs?` This document has ${d.figures.length} embedded image${d.figures.length>1?'s':''} — each shows as the literal text "[image]"; delete one of those and that picture goes with it.`:''}</div></div>
   <div class="acts"><button class="btn sm" data-docsave="${m.id}">Save</button>
    <button class="btn sec sm" data-close>Cancel</button>
    <button class="btn danger" data-docdel="${m.id}">${state.confirmDel===m.id?'Tap again to delete':'Delete document'}</button></div></div>`);
@@ -1452,10 +1635,12 @@ function dataHTML(){
   </div>`);
 }
 async function exportAll(){
- const docs={};
- for(const d of DB.index.docs)docs[d.id]=(await loadDoc(d.id))?.content||'';
+ const docs={},figures={};
+ for(const d of DB.index.docs){
+  const rec=await loadDoc(d.id);docs[d.id]=rec?.content||'';
+  if(rec?.figures?.length)figures[d.id]=rec.figures;}
  const payload={app:'MyDrive',schema:SCHEMA,exportedAt:now(),
-  index:DB.index,docs,knowledge:K,reviewlogs:DB.reviewlogs,prefs:DB.prefs};
+  index:DB.index,docs,figures,knowledge:K,reviewlogs:DB.reviewlogs,prefs:DB.prefs};
  const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
  const a=document.createElement('a');
  a.href=URL.createObjectURL(blob);
@@ -1464,7 +1649,9 @@ async function exportAll(){
  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
 /* Import merges by id and never overwrites, so restoring an old backup on top
-   of newer work cannot destroy the newer work. */
+   of newer work cannot destroy the newer work. Embedded-image references
+   travel with the doc (the actual image files stay wherever they already
+   are in Supabase Storage — a backup only ever carries the pointers). */
 async function importAll(text){
  const d=JSON.parse(text);
  if(d.app!=='MyDrive')throw new Error('Not a MyDrive backup file');
@@ -1473,7 +1660,7 @@ async function importAll(text){
  for(const doc of d.index?.docs||[]){
   if(have.has(doc.id))continue;
   DB.index.docs.push(doc);
-  await store.set('pkos:doc:'+doc.id,{id:doc.id,content:(d.docs||{})[doc.id]||''});
+  await store.set('pkos:doc:'+doc.id,{id:doc.id,content:(d.docs||{})[doc.id]||'',figures:(d.figures||{})[doc.id]||[]});
   docs++;}
  KNOWLEDGE_LISTS.forEach(k=>{items+=mergeById(K[k],d.knowledge?.[k]);});
  mergeById(DB.reviewlogs,d.reviewlogs);
@@ -1508,7 +1695,7 @@ async function recoverOrphanDocs(){
   DB.index.docs.unshift({id,title:content.slice(0,38)+'…',author:'',domain:DOMAINS[3],
    language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,
    progress:0,createdAt:now(),lastReadAt:null});
-  cacheDoc(id,{id,content});n++;
+  cacheDoc(id,{id,content,figures:rec?.figures||[]});n++;
  }
  if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
  else toast('Found entries but could not read their content');
@@ -2196,15 +2383,27 @@ document.addEventListener('click',async e=>{
   state.confirmDel=null;state.panel={type:'docedit',item:m};return paintPanel();}
  const ds=T.closest('[data-docsave]');
  if(ds){
-  const m=meta(ds.dataset.docsave),prev=(docCache[m.id]||{}).content||'';
-  const next=cleanText($('dcontent').value);
+  const m=meta(ds.dataset.docsave),prevRec=docCache[m.id]||{},prev=prevRec.content||'';
+  let figures=prevRec.figures||[];
+  let raw=$('dcontent').value;
+  if(figures.length)raw=raw.split('[image]').join(FIG_MARK);
+  const next=cleanText(raw);
   m.title=$('dtitle').value.trim()||m.title;
-  m.author=$('dauthor').value.trim();m.domain=$('ddomain').value;m.updatedAt=now();
+  m.author=$('dauthor').value.trim();m.domain=$('ddomain').value;
+  m.originalUrl=$('dsrclink').value.trim();m.updatedAt=now();
   let msg='Saved';
   if(next!==prev){
    const r=reanchor(m.id,next);
+   if(figures.length){
+    // Markers don't have their own searchable text like a highlight does,
+    // so they're matched back up by order rather than by content: the Nth
+    // "[image]" the user left in the box gets the Nth image that was here
+    // before. Delete a marker and that image simply drops off the end.
+    const positions=[];let idx=-1;
+    while((idx=next.indexOf(FIG_MARK,idx+1))!==-1)positions.push(idx);
+    figures=figures.slice(0,positions.length).map((f,i)=>({...f,offset:positions[i]}));}
    m.chars=next.length;m.language=isKo(next.slice(0,400))?'ko':'en';
-   cacheDoc(m.id,{id:m.id,content:next});await store.set('pkos:doc:'+m.id,docCache[m.id]);
+   cacheDoc(m.id,{id:m.id,content:next,figures});await store.set('pkos:doc:'+m.id,docCache[m.id]);
    msg=`Saved · ${r.moved} re-attached${r.lost?`, ${r.lost} lost their place`:''}`;}
   save('pkos:index','pkos:knowledge');state.panel=null;lastReaderDoc=null;render();return toast(msg);}
  const dd=T.closest('[data-docdel]');
@@ -2217,9 +2416,10 @@ document.addEventListener('click',async e=>{
   ['vocabulary','concepts','thoughts','questions'].forEach(k=>K[k].forEach(o=>{
    if(o.sourceDocumentId===id)o.sourceDocumentId=null;
    if(gone.has(o.sourceHighlightId))o.sourceHighlightId=null;}));
+  const figPaths=(docCache[id]?.figures||[]).map(f=>f.path).filter(Boolean);
   delete docCache[id];knownCache={id:null,n:-1,count:0};
   try{localStorage.removeItem('pkos:doc:'+id);}catch(e){}
-  if(SB.on)sbDeleteDoc(id);   // otherwise the text stays orphaned in Supabase forever
+  if(SB.on){sbDeleteDoc(id);if(figPaths.length)sbDeleteAssets(figPaths);}   // otherwise both stay orphaned in Supabase forever
   save('pkos:index','pkos:knowledge');
   state.confirmDel=null;state.panel=null;return go('library');}
 
@@ -2339,7 +2539,7 @@ document.addEventListener('keydown',e=>{
  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('q').focus();}
  if(e.key==='Escape'){killCo();if(state.panel){state.panel=null;paintPanel();}}
 });
-document.addEventListener('change',e=>{
+document.addEventListener('change',async e=>{
  if(e.target.id==='readnum'){
   DB.prefs.read=Math.max(13,Math.min(34,+e.target.value||19));applyPrefs();store.set('pkos:prefs',DB.prefs);return;}
  if(e.target.id==='newnum'){
@@ -2353,6 +2553,27 @@ document.addEventListener('change',e=>{
   r.readAsText(f);return;}
  if(e.target.id!=='file')return;
  const f=e.target.files[0];if(!f)return;
+ const isPdf=/\.pdf$/i.test(f.name)||f.type==='application/pdf';
+ if(isPdf){
+  e.target.value='';
+  if(!SB.on)return toast('Sign in first — a PDF\'s images need Supabase Storage to live in');
+  const title=f.name.replace(/\.pdf$/i,''),docId=uid('doc');
+  showProgress('Reading page 1…');
+  try{
+   const{content,figures}=await extractPdf(f,docId,(n,total,figSoFar)=>
+    showProgress(`Reading page ${n} of ${total}…${figSoFar?` (${figSoFar} image${figSoFar===1?'':'s'} so far)`:''}`));
+   hideProgress();
+   await addDoc(title,'Upload',content,DOMAINS[0],figures,docId);
+   toast(`Added — ${figures.length} image${figures.length===1?'':'s'} embedded`);
+  }catch(err){hideProgress();toast('Could not read that PDF: '+err.message);}
+  return;}
+ // There's no image parser here either — reading one as text doesn't
+ // "extract the text and drop the pictures," it just decodes binary bytes
+ // as if they were UTF-8, which comes out as garbage. Refuse it outright
+ // rather than let that fail silently.
+ if(!/\.(txt|md|markdown)$/i.test(f.name)&&f.type!=='text/plain'){
+  e.target.value='';
+  return toast('Only .txt, .md and .pdf files are supported right now');}
  const r=new FileReader();
  r.onload=()=>addDoc(f.name.replace(/\.(txt|md|markdown)$/i,''),'Upload',r.result,DOMAINS[0]);
  r.readAsText(f);
@@ -2367,6 +2588,18 @@ function toast(msg){
  const el=document.createElement('div');el.className='toast';el.textContent=msg;
  document.body.appendChild(el);setTimeout(()=>el.remove(),1800);
 }
+/* Unlike toast(), this doesn't auto-dismiss — a page-by-page PDF import can
+   run well past toast's 1.8s window, and a progress line that vanishes
+   partway through reads as "did this freeze?" rather than "still working." */
+function showProgress(msg){
+ let el=document.getElementById('pdfprogress');
+ if(!el){
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  el=document.createElement('div');el.id='pdfprogress';el.className='toast';
+  document.body.appendChild(el);}
+ el.textContent=msg;
+}
+function hideProgress(){document.getElementById('pdfprogress')?.remove();}
 </script>
 </body>
 </html>
