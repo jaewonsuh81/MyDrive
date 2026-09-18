@@ -1626,7 +1626,10 @@ function accountHTML(p){
   <div class="acts">
    <button class="btn sm" data-pull>Pull from server</button>
    <button class="btn sec sm" data-pushall>Push everything up</button>
-   <button class="btn danger" data-signout>Sign out</button></div></div>`);
+   <button class="btn sec sm" data-reload>Reload app</button>
+   <button class="btn danger" data-signout>Sign out</button></div>
+  <div style="font-size:11px;color:var(--label3);margin-top:6px">
+   "Reload app" restarts MyDrive from scratch — use it if something added on another device still isn't showing up, or after this app itself was updated.</div></div>`);
  if(SB.configured===false)return shell('Account',`<div class="card">
   <div class="f"><div class="k">Not set up on the server yet</div>
    <div class="v" style="line-height:1.55">Sign-in needs two values from your Supabase project.
@@ -1748,8 +1751,10 @@ async function recoverOrphanDocs(){
  if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
  else toast('Found entries but could not read their content');
 }
+const BUILD='2026-09-18-pdf3';   // bump this string on every future patch, purely so a stale deploy is easy to spot
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
+  <div class="f"><div class="k">Build</div><div class="v">${esc(BUILD)} · pdf.js ${window.pdfjsLib?'loaded':'⚠ NOT loaded'}</div></div>
   <div class="f"><div class="k">Route</div><div class="v">${esc(API_MODE||'unknown')}</div></div>
   <div class="f"><div class="k">Server</div>
    <pre style="font-size:11.5px;white-space:pre-wrap;word-break:break-all;margin:0;font-family:var(--mono)">${esc(JSON.stringify(p.out,null,1))}</pre></div>
@@ -2368,6 +2373,7 @@ document.addEventListener('click',async e=>{
   catch(err){state.panel={type:'account',email,error:err.message};return paintPanel();}}
  if(T.closest('[data-signout]')){sbClear();state.panel=null;render();return toast('Signed out');}
  if(T.closest('[data-pull]')){await sbPull();return toast('Pulled from server');}
+ if(T.closest('[data-reload]')){location.reload();return;}
  if(T.closest('[data-pushall]')){
   toast('Pushing…');
   await pushEverything();
