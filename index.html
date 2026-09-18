@@ -176,7 +176,8 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
   display:grid;place-items:center;font-size:12px;color:#fff;margin-top:1px;transition:.14s var(--ease)}
 .tick.on{background:var(--blue);border-color:var(--blue)}
 .empty{border:1px dashed var(--sep-strong);border-radius:var(--r2);padding:24px;color:var(--label3);font-size:13.5px;text-align:center}
-.addcard{margin-top:20px;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:15px}
+.addcard{margin-top:20px;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);padding:15px;transition:.15s var(--ease)}
+.addcard.dragover{border-color:var(--blue);border-style:dashed;background:color-mix(in srgb,var(--blue) 6%,var(--elevated))}
 .addcard textarea{width:100%;min-height:84px;resize:vertical;background:var(--content);border:1px solid var(--sep-strong);
   border-radius:var(--r1);padding:10px;font-size:13.5px;line-height:1.55;outline:none}
 .flexrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
@@ -619,14 +620,28 @@ async function sbPushState(localKey,value){
 }
 async function sbPushDoc(id,content,figures){
  if(!SB.on||!SB.user)return;
- const r=await sbRest('documents?on_conflict=user_id,id',{method:'POST',
-  headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
-  body:JSON.stringify({user_id:SB.user.id,id,content:cleanText(content),figures:figures||[]})});
- if(!r.ok)SB.lastError=await sbWhy(r,'document');
+ const body={user_id:SB.user.id,id,content:cleanText(content),figures:figures||[]};
+ let r=await sbRest('documents?on_conflict=user_id,id',{method:'POST',
+  headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(body)});
+ if(!r.ok){
+  const why=await sbWhy(r,'document');
+  if(/figures/i.test(why)){
+   // The migration that adds the figures column hasn't been run yet on this
+   // project — don't let that block plain text from syncing too. Retry
+   // without it; images will finish syncing once the column exists and
+   // "Push everything up" is used once.
+   delete body.figures;
+   r=await sbRest('documents?on_conflict=user_id,id',{method:'POST',
+    headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(body)});
+   if(r.ok){SB.lastError='Images need the Supabase migration run — see setup notes';return;}
+  }
+  SB.lastError=why;
+ }
 }
 async function sbGetDoc(id){
  if(!SB.on)return null;
- const r=await sbRest(`documents?id=eq.${encodeURIComponent(id)}&select=content,figures`);
+ let r=await sbRest(`documents?id=eq.${encodeURIComponent(id)}&select=content,figures`);
+ if(!r.ok)r=await sbRest(`documents?id=eq.${encodeURIComponent(id)}&select=content`);   // pre-migration schema
  if(!r.ok)return null;
  const rows=await r.json();
  return rows[0]?{id,content:rows[0].content,figures:rows[0].figures||[]}:null;
@@ -995,7 +1010,7 @@ function viewLibrary(){
     <label class="btn sec sm" style="cursor:pointer">Choose file
      <input type="file" id="file" accept=".txt,.md,.markdown,text/plain,.pdf,application/pdf" hidden></label></div>
    <div style="font-size:11.5px;color:var(--label3);margin:-6px 0 11px">
-    .txt and .md open instantly. .pdf takes longer — formulas and figures are kept as images, in place.</div>
+    Drag a file in, or choose one. .txt and .md open instantly. .pdf takes longer — formulas and figures are kept as images, in place.</div>
    <textarea id="paste" placeholder="Paste text"></textarea>
    <div class="flexrow">
     <input class="tin" id="ntitle" placeholder="Title" style="flex:1.4">
@@ -2552,11 +2567,23 @@ document.addEventListener('change',async e=>{
    catch(err){toast('Import failed: '+err.message);}};
   r.readAsText(f);return;}
  if(e.target.id!=='file')return;
- const f=e.target.files[0];if(!f)return;
+ const f=e.target.files[0];e.target.value='';
+ handleFilePick(f);
+});
+/* One entry point for "a file arrived" — used by both the file picker and
+   drag-and-drop, so PDF/txt handling only exists in one place. */
+function downloadBlob(blob,filename){
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);a.download=filename;
+ document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+async function handleFilePick(f){
+ if(!f)return;
  const isPdf=/\.pdf$/i.test(f.name)||f.type==='application/pdf';
  if(isPdf){
-  e.target.value='';
   if(!SB.on)return toast('Sign in first — a PDF\'s images need Supabase Storage to live in');
+  downloadBlob(f,f.name);   // keep a copy of the original before touching it at all
   const title=f.name.replace(/\.pdf$/i,''),docId=uid('doc');
   showProgress('Reading page 1…');
   try{
@@ -2564,19 +2591,30 @@ document.addEventListener('change',async e=>{
     showProgress(`Reading page ${n} of ${total}…${figSoFar?` (${figSoFar} image${figSoFar===1?'':'s'} so far)`:''}`));
    hideProgress();
    await addDoc(title,'Upload',content,DOMAINS[0],figures,docId);
-   toast(`Added — ${figures.length} image${figures.length===1?'':'s'} embedded`);
+   toast(`Added — original saved to your downloads, ${figures.length} image${figures.length===1?'':'s'} embedded`);
   }catch(err){hideProgress();toast('Could not read that PDF: '+err.message);}
   return;}
  // There's no image parser here either — reading one as text doesn't
  // "extract the text and drop the pictures," it just decodes binary bytes
  // as if they were UTF-8, which comes out as garbage. Refuse it outright
  // rather than let that fail silently.
- if(!/\.(txt|md|markdown)$/i.test(f.name)&&f.type!=='text/plain'){
-  e.target.value='';
-  return toast('Only .txt, .md and .pdf files are supported right now');}
+ if(!/\.(txt|md|markdown)$/i.test(f.name)&&f.type!=='text/plain')
+  return toast('Only .txt, .md and .pdf files are supported right now');
  const r=new FileReader();
  r.onload=()=>addDoc(f.name.replace(/\.(txt|md|markdown)$/i,''),'Upload',r.result,DOMAINS[0]);
  r.readAsText(f);
+}
+document.addEventListener('dragover',e=>{
+ const c=e.target.closest?.('.addcard');if(!c)return;
+ e.preventDefault();c.classList.add('dragover');
+});
+document.addEventListener('dragleave',e=>{
+ const c=e.target.closest?.('.addcard');if(c&&!c.contains(e.relatedTarget))c.classList.remove('dragover');
+});
+document.addEventListener('drop',e=>{
+ const c=e.target.closest?.('.addcard');if(!c)return;
+ e.preventDefault();c.classList.remove('dragover');
+ handleFilePick(e.dataTransfer.files[0]);
 });
 let qt=null;
 document.getElementById('q').addEventListener('input',e=>{
