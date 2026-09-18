@@ -1177,6 +1177,11 @@ async function addDoc(title,author,content,domain,figures,presetId){
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
   language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null});
  await store.set('pkos:doc:'+id,{id,content,figures:figures||[]});cacheDoc(id,{id,content,figures:figures||[]});save('pkos:index');
+ // Adding a whole document is a big enough moment to skip the usual
+ // debounce (300ms locally, 3.5s to the server) and push right away —
+ // otherwise switching to another device within that window can catch the
+ // sync mid-flight and look like it never happened at all.
+ flushWrites();await pushRemote();
  go('reader',{docId:id});toast('Document added');
 }
 /* Editing source text shifts every offset after the edit, so each highlight
