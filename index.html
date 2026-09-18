@@ -13,8 +13,13 @@
 <meta name="apple-mobile-web-app-title" content="MyDrive">
 <!-- PDF text/page extraction. Runs entirely in the browser — no server route,
      no per-page API cost. Pinned version so a library update never silently
-     changes extraction behavior underfoot. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.js"></script>
+     changes extraction behavior underfoot. As of 4.x, pdf.js only ships ES
+     module builds (.mjs) — importing it here and hanging it on window makes
+     it usable from the plain classic script below, same as before. -->
+<script type="module">
+ import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.min.mjs';
+ window.pdfjsLib=pdfjsLib;
+</script>
 <style>
 :root{
   --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Apple SD Gothic Neo","Pretendard Variable",Pretendard,system-ui,sans-serif;
@@ -569,31 +574,41 @@ async function sbPull(){
   for(const row of rows){
    const localKey=Object.keys(SB_KEYS).find(k=>SB_KEYS[k]===row.key);
    if(!localKey)continue;
-   const mine=meta[localKey];
-   if(mine&&mine>row.updated_at)continue;           // local is newer, keep it
    if(localKey==='pkos:index'){
-    /* A document you added on one device is worth more than perfect
-       symmetry, so this merges by id instead of replacing the list: add
-       whatever the server has that this device doesn't, and only ever
-       overwrite an existing entry's fields when the server's copy was
-       read more recently than this device's. Nothing local is dropped. */
+    /* Merged, not replaced — and unconditionally, with no "who's newer"
+       check. That check made sense back when a pull could REPLACE the
+       whole list; now it can only ever ADD to it, so there's nothing left
+       to guard against. The old check was actively harmful here: a fresh
+       install seeds a few sample docs and touches this key with a
+       right-now timestamp, which made every pull afterward look "older
+       than mine" and get skipped — the exact bug behind documents not
+       showing up on a newly (re)installed device even after signing in. */
     const byId=new Map(DB.index.docs.map(x=>[x.id,x]));
+    let changed=false;
     for(const sd of (row.value?.docs||[])){
      const ld=byId.get(sd.id);
-     if(!ld){DB.index.docs.push(sd);byId.set(sd.id,sd);}
-     else if((sd.lastReadAt||'')>(ld.lastReadAt||''))Object.assign(ld,sd);
+     if(!ld){DB.index.docs.push(sd);byId.set(sd.id,sd);changed=true;}
+     else if((sd.lastReadAt||'')>(ld.lastReadAt||'')){Object.assign(ld,sd);changed=true;}
     }
+    if(changed)await store.set('pkos:index',DB.index);
    }
    else if(localKey==='pkos:knowledge'){
-    /* Same reasoning as the document list just above: a highlight, word,
-       or piece of writing made on one device must never be erased by a
-       pull from another. Each array is merged by id instead of replaced. */
-    KNOWLEDGE_LISTS.forEach(k=>mergeById(K[k],row.value?.[k]));
+    let changed=false;
+    KNOWLEDGE_LISTS.forEach(k=>{if(mergeById(K[k],row.value?.[k]))changed=true;});
+    if(changed)await store.set('pkos:knowledge',K);
    }
-   else if(localKey==='pkos:reviewlogs')mergeById(DB.reviewlogs,row.value);
-   else if(localKey==='pkos:prefs')DB.prefs={...DEFAULT_PREFS,...row.value};
-   else if(localKey==='pkos:stats')DB.stats=row.value;
-   try{localStorage.setItem(localKey,JSON.stringify(row.value));}catch(e){}
+   else if(localKey==='pkos:reviewlogs'){
+    if(mergeById(DB.reviewlogs,row.value))await store.set('pkos:reviewlogs',DB.reviewlogs);
+   }
+   else{
+    // Plain settings blobs, not merged collections — "whichever side was
+    // touched more recently wins" is still the right rule here.
+    const mine=meta[localKey];
+    if(mine&&mine>row.updated_at)continue;
+    if(localKey==='pkos:prefs')DB.prefs={...DEFAULT_PREFS,...row.value};
+    else if(localKey==='pkos:stats')DB.stats=row.value;
+    try{localStorage.setItem(localKey,JSON.stringify(row.value));}catch(e){}
+   }
   }
   SB.lastError=null;
   knownCache={id:null,n:-1,count:0};
@@ -689,6 +704,24 @@ function flushWrites(){
 window.addEventListener('pagehide',()=>{flushWrites();pushRemote();});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushWrites();});
 
+/* The one gap that mattered most: sbPull() used to run exactly once, at
+   boot. Switching back to a tab or the home-screen app that was already
+   open — not relaunching it — resumes the same in-memory state with no
+   reason to ever ask the server again, so a document added on another
+   device just never appeared until a hard reload. Re-checking whenever the
+   app becomes visible closes that gap; the cooldown just keeps quick
+   tab-switching from hammering the API. */
+let lastPullAt=0;
+async function sbPullIfStale(){
+ if(!SB.on||Date.now()-lastPullAt<15000)return;
+ lastPullAt=Date.now();
+ await sbPull();render();
+}
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState==='visible')sbPullIfStale();
+});
+window.addEventListener('focus',sbPullIfStale);
+
 const SCHEMA=2;   // bump when the stored shape changes; migrations run in boot()
 const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'full',lh:1.68,panel:true,newPerDay:10,wv:2};
 const DB={index:{docs:[]},
@@ -775,7 +808,7 @@ const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
  }
  try{history.replaceState({view:'today',docId:null},'');}catch(e){}
  render();
- if(SB.on)sbPull();
+ if(SB.on){lastPullAt=Date.now();sbPull();}
 })();
 
 function applyPrefs(){
@@ -1044,7 +1077,7 @@ const PDF_MIN_CROP=14;          // ignore anything smaller than this (px) — no
 function pdfLoadLib(){
  if(!window.pdfjsLib)throw new Error('PDF support did not finish loading — check your connection and try again');
  if(!pdfjsLib.GlobalWorkerOptions.workerSrc)
-  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.mjs';
 }
 /* Is this rectangle of the rendered page actually blank? Checked before
    spending an upload on it — a big paragraph gap is usually just a
