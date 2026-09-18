@@ -82,7 +82,8 @@ input,textarea,select{font:inherit;color:inherit;letter-spacing:inherit}
 .navbtn[aria-current="true"]{background:var(--fill2);font-weight:510}
 .navbtn[aria-current="true"] svg{color:var(--blue)}
 .usage{margin-top:auto;background:var(--fill3);border-radius:var(--r2);padding:10px 12px;font-size:12px;color:var(--label2)}
-.usage .u{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0}
+.usage .u{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0;gap:8px}
+.usage .u span,.usage .u b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .usage b{font-weight:590;color:var(--label);font-variant-numeric:tabular-nums;font-size:13px}
 .themetog{display:flex;gap:2px;margin-top:9px;background:var(--fill2);border-radius:8px;padding:2px}
 .themetog button{flex:1;padding:4px 0;border-radius:6px;font-size:11px;color:var(--label2);transition:.16s var(--ease)}
@@ -327,8 +328,14 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
   .sidebar .mark{display:none}
   /* <nav> itself had no display:flex, so its buttons fell back to normal
      block flow and stacked one-per-line no matter what .sidebar did. */
-  #nav{display:flex;gap:2px;overflow-x:auto;padding:2px 12px 6px}
-  .navbtn{width:auto;padding:6px 11px;white-space:nowrap;flex:none} .navbtn .n{display:none}
+  #nav{display:flex;padding:2px 4px 4px}
+  /* Six items, one row, nothing to scroll: each tab takes an equal share of
+     the width (icon over a small label, like a native iOS tab bar) instead
+     of a fixed content width — so it can never add up to more than 100%. */
+  .navbtn{flex:1;flex-direction:column;justify-content:center;gap:2px;padding:6px 2px 4px;border-radius:10px}
+  .navbtn svg{width:21px;height:21px}
+  .navbtn .t{font-size:10px;font-weight:510;white-space:normal;text-align:center;line-height:1.15}
+  .navbtn .n{display:none}
   /* Keep only the sign-in/account row; storage bar and theme toggle are
      desktop-only conveniences that just crowd out "Sign in" on a phone. */
   .sidebar .usage{margin:0;background:none;border-radius:0;padding:2px 12px calc(6px + env(safe-area-inset-bottom));
@@ -524,6 +531,16 @@ async function sbSignIn(email,password,create){
  if(create&&!j.access_token)throw new Error('Check your email to confirm the account, then sign in.');
  sbStore(j);
  await sbPull();
+ // A brand-new account has nothing to pull, so whatever is already on this
+ // device (seed docs, anything made before signing up) needs pushing up
+ // right away — otherwise it only backs up whenever something next changes.
+ if(create)await pushEverything();
+}
+async function pushEverything(){
+ const map={'pkos:index':DB.index,'pkos:knowledge':K,'pkos:reviewlogs':DB.reviewlogs,
+            'pkos:prefs':DB.prefs,'pkos:stats':DB.stats};
+ for(const k of Object.keys(map))await sbPushState(k,map[k]);
+ for(const d of DB.index.docs){const c=await loadDoc(d.id);await sbPushDoc(d.id,c?.content||'');}
 }
 /* First contact on a device: take whichever side was written more recently,
    per key. A fresh browser has no local timestamps, so it takes the server. */
@@ -540,9 +557,26 @@ async function sbPull(){
    if(!localKey)continue;
    const mine=meta[localKey];
    if(mine&&mine>row.updated_at)continue;           // local is newer, keep it
-   if(localKey==='pkos:index')DB.index=row.value;
-   else if(localKey==='pkos:knowledge')Object.assign(K,row.value);
-   else if(localKey==='pkos:reviewlogs')DB.reviewlogs=row.value;
+   if(localKey==='pkos:index'){
+    /* A document you added on one device is worth more than perfect
+       symmetry, so this merges by id instead of replacing the list: add
+       whatever the server has that this device doesn't, and only ever
+       overwrite an existing entry's fields when the server's copy was
+       read more recently than this device's. Nothing local is dropped. */
+    const byId=new Map(DB.index.docs.map(x=>[x.id,x]));
+    for(const sd of (row.value?.docs||[])){
+     const ld=byId.get(sd.id);
+     if(!ld){DB.index.docs.push(sd);byId.set(sd.id,sd);}
+     else if((sd.lastReadAt||'')>(ld.lastReadAt||''))Object.assign(ld,sd);
+    }
+   }
+   else if(localKey==='pkos:knowledge'){
+    /* Same reasoning as the document list just above: a highlight, word,
+       or piece of writing made on one device must never be erased by a
+       pull from another. Each array is merged by id instead of replaced. */
+    KNOWLEDGE_LISTS.forEach(k=>mergeById(K[k],row.value?.[k]));
+   }
+   else if(localKey==='pkos:reviewlogs')mergeById(DB.reviewlogs,row.value);
    else if(localKey==='pkos:prefs')DB.prefs={...DEFAULT_PREFS,...row.value};
    else if(localKey==='pkos:stats')DB.stats=row.value;
    try{localStorage.setItem(localKey,JSON.stringify(row.value));}catch(e){}
@@ -612,6 +646,18 @@ const DB={index:{docs:[]},
  reviewlogs:[],
  tcache:{},stats:{apiCalls:0,cacheHits:0},prefs:{...DEFAULT_PREFS}};
 const K=DB.knowledge;
+const KNOWLEDGE_LISTS=['highlights','vocabulary','concepts','thoughts','questions','writings'];
+/* Additive merge used anywhere two copies of the same list (this device vs.
+   server, or an imported backup) need combining: whatever isn't already
+   present by id gets added, nothing existing is ever removed or replaced.
+   Returns how many new entries were added. */
+function mergeById(arr,incoming){
+ if(!Array.isArray(arr)||!Array.isArray(incoming))return 0;
+ const ids=new Set(arr.map(x=>x.id));
+ let added=0;
+ for(const x of incoming){if(x&&x.id&&!ids.has(x.id)){arr.push(x);ids.add(x.id);added++;}}
+ return added;
+}
 const DOMAINS=['Major / Career','English / Liberal Arts','World / News / Investment','General Knowledge'];
 const WIDTHS={narrow:'34em',normal:'42em',wide:'54em',full:'100%'};
 const KINDLABEL={mark:'Highlight',word:'Word',memo:'Memo'};
@@ -783,8 +829,8 @@ function paintNav(){
   ['write','Write','write',(K.writings||[]).length],
   ['knowledge','Knowledge','knowledge',K.concepts.length+K.thoughts.length+K.questions.length],
   ['review','Review','review',dueConcepts().length]];
- $nav.innerHTML=items.map(([k,l,ic,n])=>`<button class="navbtn" data-nav="${k}" aria-current="${state.view===k||(k==='library'&&state.view==='reader')}">
-  ${svg(ic)}<span>${l}</span>${n===''?'':`<span class="n">${n}</span>`}</button>`).join('');
+ $nav.innerHTML=items.map(([k,l,ic,n])=>`<button class="navbtn" data-nav="${k}" aria-current="${state.view===k||(k==='library'&&state.view==='reader')}" aria-label="${esc(l)}">
+  ${svg(ic)}<span class="t">${l}</span>${n===''?'':`<span class="n">${n}</span>`}</button>`).join('');
 }
 function fmtBytes(n){return n>1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';}
 function paintUsage(){
@@ -1399,7 +1445,11 @@ function dataHTML(){
   <div class="acts">
    <button class="btn sm" data-export>Export everything</button>
    <label class="btn sec sm" style="cursor:pointer">Import<input type="file" id="importfile" accept=".json,application/json" hidden></label>
-  </div></div>`);
+  </div>
+  <div class="f"><div class="k">Missing a document?</div>
+   <div class="v" style="color:var(--label2);line-height:1.5;margin-bottom:8px">If a book vanished from your Library after signing in on another device, its text is often still saved on this device — this looks for it.</div>
+   <button class="btn sec sm" data-recoverdocs>Scan for missing documents</button></div>
+  </div>`);
 }
 async function exportAll(){
  const docs={};
@@ -1425,16 +1475,44 @@ async function importAll(text){
   DB.index.docs.push(doc);
   await store.set('pkos:doc:'+doc.id,{id:doc.id,content:(d.docs||{})[doc.id]||''});
   docs++;}
- ['highlights','vocabulary','concepts','thoughts','questions'].forEach(k=>{
-  const ids=new Set(K[k].map(x=>x.id));
-  (d.knowledge?.[k]||[]).forEach(x=>{if(!ids.has(x.id)){K[k].push(x);items++;}});});
- const lids=new Set(DB.reviewlogs.map(x=>x.id));
- (d.reviewlogs||[]).forEach(x=>{if(!lids.has(x.id))DB.reviewlogs.push(x);});
+ KNOWLEDGE_LISTS.forEach(k=>{items+=mergeById(K[k],d.knowledge?.[k]);});
+ mergeById(DB.reviewlogs,d.reviewlogs);
  knownCache={id:null,n:-1,count:0};
  save('pkos:index','pkos:knowledge','pkos:reviewlogs');
  return{docs,items};
 }
 
+/* Recovery net: a document's text lives under its own pkos:doc:<id> key,
+   separate from the pkos:index list that says which ids exist. If the list
+   ever loses an entry (an interrupted sync, a bug like the one this was
+   added for) the text itself is usually still sitting in storage, just
+   unlisted. This finds those and re-lists them rather than leaving them
+   stranded forever. */
+function findOrphanDocs(){
+ const known=new Set(DB.index.docs.map(d=>d.id));
+ const orphans=[];
+ for(let i=0;i<localStorage.length;i++){
+  const k=localStorage.key(i);
+  if(k&&k.startsWith('pkos:doc:')&&!known.has(k.slice(9)))orphans.push(k.slice(9));
+ }
+ return orphans;
+}
+async function recoverOrphanDocs(){
+ const orphans=findOrphanDocs();
+ if(!orphans.length)return toast('No missing documents found');
+ let n=0;
+ for(const id of orphans){
+  const rec=await store.get('pkos:doc:'+id);
+  const content=(rec?.content||'').trim();
+  if(!content)continue;
+  DB.index.docs.unshift({id,title:content.slice(0,38)+'…',author:'',domain:DOMAINS[3],
+   language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,
+   progress:0,createdAt:now(),lastReadAt:null});
+  cacheDoc(id,{id,content});n++;
+ }
+ if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
+ else toast('Found entries but could not read their content');
+}
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
   <div class="f"><div class="k">Route</div><div class="v">${esc(API_MODE||'unknown')}</div></div>
@@ -2057,10 +2135,7 @@ document.addEventListener('click',async e=>{
  if(T.closest('[data-pull]')){await sbPull();return toast('Pulled from server');}
  if(T.closest('[data-pushall]')){
   toast('Pushing…');
-  const map={'pkos:index':DB.index,'pkos:knowledge':K,'pkos:reviewlogs':DB.reviewlogs,
-             'pkos:prefs':DB.prefs,'pkos:stats':DB.stats};
-  for(const k of Object.keys(map))await sbPushState(k,map[k]);
-  for(const d of DB.index.docs){const c=await loadDoc(d.id);await sbPushDoc(d.id,c?.content||'');}
+  await pushEverything();
   render();return toast('Everything pushed');}
  if(T.closest('[data-brief]')){await loadBriefing(true);return;}
  const xp=T.closest('[data-expand]');
@@ -2102,6 +2177,7 @@ document.addEventListener('click',async e=>{
   save('pkos:knowledge');render();return toast(`Added ${n} words`);}
  if(T.closest('[data-data]')){state.panel={type:'data'};return paintPanel();}
  if(T.closest('[data-export]')){await exportAll();return toast('Backup downloaded');}
+ if(T.closest('[data-recoverdocs]')){await recoverOrphanDocs();return;}
  if(T.closest('[data-readset]')){state.panel={type:'readset'};return paintPanel();}
  const rd=T.closest('[data-read]');
  if(rd){DB.prefs.read=Math.max(13,Math.min(34,(DB.prefs.read||19)+(rd.dataset.read==='+'?1:-1)));
@@ -2143,6 +2219,7 @@ document.addEventListener('click',async e=>{
    if(gone.has(o.sourceHighlightId))o.sourceHighlightId=null;}));
   delete docCache[id];knownCache={id:null,n:-1,count:0};
   try{localStorage.removeItem('pkos:doc:'+id);}catch(e){}
+  if(SB.on)sbDeleteDoc(id);   // otherwise the text stays orphaned in Supabase forever
   save('pkos:index','pkos:knowledge');
   state.confirmDel=null;state.panel=null;return go('library');}
 
