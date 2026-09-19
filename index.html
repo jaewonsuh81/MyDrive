@@ -211,10 +211,19 @@ h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px
    the reader has bumped the font size up or down. */
 .docformula{display:inline-block;vertical-align:-0.15em;max-height:1.7em;width:auto;
   max-width:100%;margin:0 .1em;background:var(--fill1);border-radius:3px;
-  -webkit-user-select:none;user-select:none}
+  -webkit-user-select:none;user-select:none;cursor:zoom-in}
 /* A standalone figure/photo breaks the paragraph flow, unlike a formula. */
 .docfig{display:block;max-width:100%;height:auto;margin:1.3em auto;border-radius:var(--r2);
-  background:var(--fill1);-webkit-user-select:none;user-select:none}
+  background:var(--fill1);-webkit-user-select:none;user-select:none;cursor:zoom-in}
+.figbroken{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;margin:0 .1em;
+  font-size:12px;color:var(--label3);background:var(--fill1);border-radius:99px;cursor:default}
+.figzoom{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.86);display:flex;
+  align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
+.figzoom img{max-width:100%;max-height:100%;border-radius:var(--r2);box-shadow:var(--shadow-l)}
+.doctable{display:block;width:100%;margin:1.3em 0;border-collapse:collapse;font-family:var(--ui);
+  font-size:0.78em;line-height:1.4}
+.doctable td{border:1px solid var(--sep);padding:5px 8px;text-align:center;white-space:nowrap}
+.doctable tr:first-child td{font-weight:590;background:var(--fill1)}
 
 /* three roles, three treatments */
 mark.hl{color:inherit;padding:.05em 0;border-radius:2px;cursor:pointer;background:var(--hl-mark);
@@ -273,6 +282,8 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
 .f .k{font-size:11px;font-weight:590;color:var(--label3);margin-bottom:3px}
 .f .v{font-size:13.5px;line-height:1.5} .f .v.ko{font-size:14.5px;line-height:1.55}
 .quote{border-left:2px solid var(--blue);padding:1px 0 1px 10px;font-family:var(--serif);font-size:14px;line-height:1.55;color:var(--label2)}
+.doclink{color:var(--blue);font-weight:510;text-decoration:underline;text-underline-offset:2px}
+.doclinkmiss{color:var(--label3);text-decoration:line-through;text-decoration-color:var(--sep-strong)}
 .acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px;padding-top:12px;border-top:1px solid var(--sep)}
 .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
 .tg{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:99px;background:var(--fill2);color:var(--label2)}
@@ -379,6 +390,7 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
   </aside>
   <main class="main" id="main">
     <div class="toolbar" id="toolbar">
+      <button class="btn plain sm" id="tbback" data-nav="library" aria-label="Back to Library" hidden>←</button>
       <span class="tbtitle" id="tbtitle"></span><span class="spacer"></span>
       <label class="field">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -585,9 +597,21 @@ async function sbPull(){
        right-now timestamp, which made every pull afterward look "older
        than mine" and get skipped — the exact bug behind documents not
        showing up on a newly (re)installed device even after signing in. */
-    const byId=new Map(DB.index.docs.map(x=>[x.id,x]));
     let changed=false;
+    if(!DB.index.deletedIds)DB.index.deletedIds=[];
+    // Tombstones merge the same additive way, then get applied: anything
+    // deleted on any device stays deleted everywhere, without a delete
+    // ever having to overwrite or race an addition.
+    if(mergeById(DB.index.deletedIds,row.value?.deletedIds))changed=true;
+    const deadIds=new Set(DB.index.deletedIds.map(t=>t.id));
+    if(deadIds.size){
+     const before=DB.index.docs.length;
+     DB.index.docs=DB.index.docs.filter(d=>!deadIds.has(d.id));
+     if(DB.index.docs.length!==before)changed=true;
+    }
+    const byId=new Map(DB.index.docs.map(x=>[x.id,x]));
     for(const sd of (row.value?.docs||[])){
+     if(deadIds.has(sd.id))continue;   // deleted here or elsewhere — don't let a pull resurrect it
      const ld=byId.get(sd.id);
      if(!ld){DB.index.docs.push(sd);byId.set(sd.id,sd);changed=true;}
      else if((sd.lastReadAt||'')>(ld.lastReadAt||'')){Object.assign(ld,sd);changed=true;}
@@ -726,7 +750,7 @@ window.addEventListener('focus',sbPullIfStale);
 
 const SCHEMA=2;   // bump when the stored shape changes; migrations run in boot()
 const DEFAULT_PREFS={theme:'auto',read:19,font:'serif',width:'full',lh:1.68,panel:true,newPerDay:10,wv:2};
-const DB={index:{docs:[]},
+const DB={index:{docs:[],deletedIds:[]},
  knowledge:{highlights:[],vocabulary:[],concepts:[],thoughts:[],questions:[],writings:[]},
  reviewlogs:[],
  tcache:{},stats:{apiCalls:0,cacheHits:0},prefs:{...DEFAULT_PREFS}};
@@ -770,7 +794,7 @@ let state={view:'today',docId:null,panel:null,tab:'concepts',wordFilter:'all',hl
  qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
 
 const $=id=>document.getElementById(id);
-const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),
+const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),$tbback=$('tbback'),
       $toolbar=$('toolbar'),$usage=$('usage'),$main=$('main'),$app=$('app');
 
 (async function boot(){
@@ -890,11 +914,15 @@ function cacheDoc(id,d){
  return d;
 }
 async function loadDoc(id){
- if(docCache[id])return docCache[id];
- let d=await store.get('pkos:doc:'+id);
- if((!d||!d.content)&&SB.on){                 // content lives on the server now
+ const m=meta(id);
+ let d=docCache[id]||await store.get('pkos:doc:'+id);
+ // A cache hit isn't necessarily current — the edit could have happened on
+ // a different device. If this copy predates the document's last known
+ // edit (per the synced index), treat it as stale rather than trust it.
+ const stale=d&&m?.updatedAt&&(d.contentAt||'')<m.updatedAt;
+ if((!d||!d.content||stale)&&SB.on){
   const remote=await sbGetDoc(id);
-  if(remote){d=remote;try{localStorage.setItem('pkos:doc:'+id,JSON.stringify(d));}catch(e){}}
+  if(remote){d={...remote,contentAt:m?.updatedAt||now()};try{localStorage.setItem('pkos:doc:'+id,JSON.stringify(d));}catch(e){}}
  }
  return cacheDoc(id,d);
 }
@@ -939,6 +967,12 @@ function paintUsage(){
 }
 function render(){
  paintNav();paintUsage();
+ // Lives in the toolbar (already sticky across the whole scroll, unlike
+ // .rhead which only spans the title area) specifically so it doesn't
+ // disappear the moment you scroll past the title into the document body —
+ // that was the actual bug: the old back button in .rhead scrolled away
+ // with the title because it was never sticky beyond that block's own height.
+ $tbback.hidden=state.view!=='reader'||!!state.query;
  if(state.query)viewSearch();
  else if(state.view==='library')viewLibrary();
  else if(state.view==='reader'){readerShownBefore=readerShown;viewReader(true);}
@@ -1062,8 +1096,12 @@ function confirmBig(len){
    turn if it's over- or under-cropping on a real file. */
 const PDF_SCALE=2;              // 2x = crisp on a retina screen without huge files
 const PDF_INLINE_GAP_MULT=2.4;  // a same-line gap wider than this many avg-char-widths ⇒ probably a formula
+const PDF_SPACE_GAP_MULT=0.15;  // a same-line gap wider than this (but narrower than the formula threshold
+                                 // above) is just an ordinary word space — measured kerning within a word
+                                 // runs close to zero, so this only has to clear that, not find an exact line
 const PDF_ROW_GAP_MULT=1.65;    // a between-line gap taller than this many line-heights ⇒ probably a figure/equation band
 const PDF_MIN_CROP=14;          // ignore anything smaller than this (px) — not worth a whole image asset
+const PDF_FORMULA_MERGE_DIST=26;// inline formula gaps closer together than this (px) are one expression, not several
 const PDF_COLUMN_GAP_FRAC=0.02;    // a gutter this wide (as a fraction of content width) marks a column break
 const PDF_COLUMN_ROW_COVERAGE=0.08; // a vertical strip counts as "empty" if fewer than this fraction of the
                                     // page's rows touch it — a few centered titles/page numbers don't disqualify it
@@ -1075,13 +1113,64 @@ function buildRows(subItems,col,colLeft,colRight){
  subItems=[...subItems].sort((a,b)=>a.top-b.top||a.x-b.x);
  const rs=[];
  subItems.forEach(it=>{
-  const row=rs.find(r=>Math.abs(r.top-it.top)<it.h*0.5);
-  if(row){row.items.push(it);row.top=Math.min(row.top,it.top);row.bottom=Math.max(row.bottom,it.bottom);}
-  else rs.push({top:it.top,bottom:it.bottom,items:[it],col,colLeft,colRight});
+  // A subscript's baseline (bottom) sits right where the surrounding
+  // text's does, even though it's short enough that its top misses a
+  // top-only comparison — checked real coordinates in an actual paper to
+  // confirm this. Tolerance comes from the row's established (main-text)
+  // height, not this one item's own — a small subscript checked against
+  // its own tiny height is exactly what was falling through before.
+  const row=rs.find(r=>{
+   const refH=Math.max(r.refH,it.h);
+   return Math.abs(r.bottom-it.bottom)<refH*0.45||Math.abs(r.top-it.top)<refH*0.45;
+  });
+  if(row){
+   row.items.push(it);row.top=Math.min(row.top,it.top);row.bottom=Math.max(row.bottom,it.bottom);
+   row.refH=Math.max(row.refH,it.h);
+  }else rs.push({top:it.top,bottom:it.bottom,items:[it],col,colLeft,colRight,refH:it.h});
  });
  rs.forEach(r=>r.items.sort((a,b)=>a.x-b.x));
  rs.sort((a,b)=>a.top-b.top);
  return rs;
+}
+/* A table doesn't compress into good prose no matter how the words are
+   ordered — cropping it as one image would work but throws away the
+   numbers as text entirely. This needs no interpretation, only geometry:
+   real table columns line up at the same x-position row after row, in a
+   way ordinary prose (whose word starts are essentially random from line
+   to line) never does. Column positions are fixed from the first
+   qualifying row, then a run only keeps extending while later rows mostly
+   land on those same positions — which is exactly what stops it at a
+   caption line below the table, verified against a real one. */
+function detectTables(rows){
+ const out=[];let i=0;
+ while(i<rows.length){
+  if(rows[i].items.length<3){out.push(rows[i]);i++;continue;}
+  let colXs=rows[i].items.map(it=>it.x).sort((a,b)=>a-b);
+  let j=i+1;
+  while(j<rows.length&&rows[j].items.length>=2&&rows[j].col===rows[i].col){
+   const aligned=rows[j].items.filter(it=>colXs.some(cx=>Math.abs(it.x-cx)<8)).length;
+   if(aligned<rows[j].items.length*0.6)break;
+   rows[j].items.forEach(it=>{if(!colXs.some(cx=>Math.abs(it.x-cx)<8))colXs.push(it.x);});
+   colXs.sort((a,b)=>a-b);
+   j++;
+  }
+  if(j-i>=3){
+   const grid=[];
+   for(let k=i;k<j;k++){
+    const cells=new Array(colXs.length).fill('');
+    rows[k].items.forEach(it=>{
+     let best=0,bestD=Infinity;
+     colXs.forEach((cx,ci)=>{const d=Math.abs(it.x-cx);if(d<bestD){bestD=d;best=ci;}});
+     cells[best]=(cells[best]?cells[best]+' ':'')+it.str;
+    });
+    grid.push(cells);
+   }
+   out.push({top:rows[i].top,bottom:rows[j-1].bottom,col:rows[i].col,
+    colLeft:rows[i].colLeft,colRight:rows[i].colRight,isTable:true,grid});
+   i=j;
+  }else{out.push(rows[i]);i++;}
+ }
+ return out;
 }
 /* A real column gutter is a vertical strip that almost no LINE on the page
    ever touches — not "zero coverage" (a centered title, author list, or
@@ -1132,13 +1221,68 @@ function pdfRegionIsBlank(ctx,x,y,w,h){
  const mean=sum/n,variance=sumSq/n-mean*mean;
  return variance<6;   // near-uniform colour = nothing drawn here
 }
-async function pdfCropToFigure(canvas,x,y,w,h,kind,docId,figIdx){
- const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(h));
- c.getContext('2d').drawImage(canvas,Math.round(x),Math.round(y),c.width,c.height,0,0,c.width,c.height);
- const blob=await new Promise(res=>c.toBlob(res,'image/webp',0.92));
- const path=`${SB.user.id}/${docId}/${figIdx}.webp`;
- const url=await sbUploadAsset(path,blob);
- return{path,url,kind,w:c.width,h:c.height};
+/* The gap around a figure or formula is a rough guess at where it sits, not
+   where it ends — cropping that guess directly carries extra blank margin
+   on whichever sides the gap overshot. This re-scans the actual pixels row
+   by row and column by column inward from each edge, stopping the moment a
+   row/column stops being uniform, so the final crop hugs the real content
+   with a small, consistent margin instead of the gap's own margin. */
+function pdfTightenCrop(ctx,x,y,w,h,pad=3){
+ x=Math.max(0,Math.round(x));y=Math.max(0,Math.round(y));
+ w=Math.round(w);h=Math.round(h);
+ if(w<=4||h<=4)return{x,y,w,h};
+ const{data}=ctx.getImageData(x,y,w,h);
+ const rowVar=row=>{
+  let sum=0,sumSq=0;
+  for(let col=0;col<w;col++){const i=(row*w+col)*4,v=(data[i]+data[i+1]+data[i+2])/3;sum+=v;sumSq+=v*v;}
+  const mean=sum/w;return sumSq/w-mean*mean;
+ };
+ const colVar=col=>{
+  let sum=0,sumSq=0;
+  for(let row=0;row<h;row++){const i=(row*w+col)*4,v=(data[i]+data[i+1]+data[i+2])/3;sum+=v;sumSq+=v*v;}
+  const mean=sum/h;return sumSq/h-mean*mean;
+ };
+ let top=0;while(top<h-1&&rowVar(top)<6)top++;
+ let bottom=h-1;while(bottom>top&&rowVar(bottom)<6)bottom--;
+ let left=0;while(left<w-1&&colVar(left)<6)left++;
+ let right=w-1;while(right>left&&colVar(right)<6)right--;
+ if(right-left<2||bottom-top<2)return{x,y,w,h};   // scan found nothing — keep the original guess rather than collapse to nothing
+ top=Math.max(0,top-pad);bottom=Math.min(h-1,bottom+pad);
+ left=Math.max(0,left-pad);right=Math.min(w-1,right+pad);
+ return{x:x+left,y:y+top,w:right-left+1,h:bottom-top+1};
+}
+/* Cropping is cheap (just canvas drawing); the upload is what takes real
+   time. Splitting them lets every crop on a page get made instantly and
+   queued, then sent up together — see uploadPendingCrops below — instead
+   of waiting on each individual upload before even starting the next
+   crop. That queueing is the actual fix for a formula-dense page being
+   slow: the crops themselves were never the bottleneck. */
+function pdfMakeCrop(canvas,x,y,w,h){
+ const tight=pdfTightenCrop(canvas.getContext('2d'),x,y,w,h);
+ const c=document.createElement('canvas');
+ c.width=Math.max(1,Math.round(tight.w));c.height=Math.max(1,Math.round(tight.h));
+ c.getContext('2d').drawImage(canvas,Math.round(tight.x),Math.round(tight.y),c.width,c.height,0,0,c.width,c.height);
+ return c;
+}
+const PDF_UPLOAD_BATCH=6;   // this many crops in flight at once, not hundreds and not one-at-a-time
+async function uploadPendingCrops(pending,docId){
+ // One flaky upload used to fail the whole Promise.all — and with it the
+ // entire document, however many pages had already processed cleanly.
+ // A skipped image is a minor, visible gap (the marker stays, the picture
+ // doesn't load — same handling as the broken-image case in the reader);
+ // throwing away the whole document over it is a far worse outcome.
+ const out=[];
+ for(let i=0;i<pending.length;i+=PDF_UPLOAD_BATCH){
+  const batch=pending.slice(i,i+PDF_UPLOAD_BATCH);
+  const done=await Promise.allSettled(batch.map(async job=>{
+   const blob=await new Promise(res=>job.canvas.toBlob(res,'image/webp',0.92));
+   const path=`${SB.user.id}/${docId}/${job.figIdx}.webp`;
+   const url=await sbUploadAsset(path,blob);
+   return{offset:job.offset,kind:job.kind,path,url,w:job.canvas.width,h:job.canvas.height};
+  }));
+  done.forEach(r=>{if(r.status==='fulfilled')out.push(r.value);});
+ }
+ return out;
 }
 async function extractPdf(file,docId,onProgress){
  pdfLoadLib();
@@ -1156,16 +1300,31 @@ async function extractPdf(file,docId,onProgress){
   // Map every text item into canvas-pixel space (the same combined-matrix
   // approach pdf.js's own text layer uses internally).
   const tc=await page.getTextContent();
-  const items=tc.items.filter(it=>it.str.trim()).map(it=>{
+  const rawItems=tc.items.filter(it=>it.str.trim()).map(it=>{
    const m=pdfjsLib.Util.transform(viewport.transform,it.transform);
    const scaleX=Math.hypot(m[0],m[1])||1,scaleY=Math.hypot(m[2],m[3])||1;
    return{str:it.str,x:m[4],yBase:m[5],w:it.width*scaleX,h:it.height*scaleY||scaleY};
   });
-  if(!items.length)continue;
-  items.forEach(it=>{it.top=it.yBase-it.h;it.bottom=it.yBase;});
+  if(!rawItems.length)continue;
+  rawItems.forEach(it=>{it.top=it.yBase-it.h;it.bottom=it.yBase;});
+
+  /* Page numbers and running headers/footers sit right at the physical
+     edge of the page and are short — read as ordinary text, a stray "14"
+     or a repeated conference name lands in the middle of a sentence. A
+     line counts as decoration, not prose, only when it's BOTH hard against
+     the edge AND short; a genuine heading is never this close to the
+     trimmed edge of the page. */
+  const pageH=canvas.height,edgeBand=pageH*0.055,strip=new Set();
+  buildRows(rawItems,'tmp',0,0).forEach(r=>{
+   const nearEdge=r.top<edgeBand||r.bottom>pageH-edgeBand;
+   const text=r.items.map(it=>it.str).join('').replace(/\s/g,'');
+   if(nearEdge&&text.length<=14)r.items.forEach(it=>strip.add(it));
+  });
+  const items=rawItems.filter(it=>!strip.has(it));
+  if(!items.length)continue;   // the whole "page" was a page number — nothing left to keep
+
   const contentLeft=Math.min(...items.map(it=>it.x));
   const contentRight=Math.max(...items.map(it=>it.x+it.w));
-
   const gutter=findColumnGutter(items,contentLeft,contentRight);
 
   /* Single column: read top to bottom, as before. Two columns: read all of
@@ -1195,7 +1354,9 @@ async function extractPdf(file,docId,onProgress){
    for(const sr of spanRows){flushTo(sr.top);orderedRows.push(sr);}
    flushTo(Infinity);
   }
+  orderedRows=detectTables(orderedRows);
 
+  const pending=[];   // crops for this page, uploaded together at the end — see uploadPendingCrops
   let prevBottom=null,prevLineH=null,prevCol=null;
   for(const row of orderedRows){
    // Jumping from the bottom of one column back to the top of the next (or
@@ -1204,31 +1365,77 @@ async function extractPdf(file,docId,onProgress){
    if(row.col!==prevCol){prevBottom=null;prevLineH=null;}
    const{colLeft,colRight}=row,colW=colRight-colLeft;
    const lineH=row.bottom-row.top;
+   if(row.isTable){
+    figures.push({kind:'table',grid:row.grid,offset:content.length});
+    content+=FIG_MARK+'\n';
+    prevBottom=row.bottom;prevLineH=lineH;prevCol=row.col;
+    continue;
+   }
    if(prevBottom!=null){
     const gap=row.top-prevBottom;
     if(prevLineH&&gap>prevLineH*PDF_ROW_GAP_MULT&&gap>PDF_MIN_CROP&&
        !pdfRegionIsBlank(ctx,colLeft,prevBottom+2,colW,gap-4)){
-     const f=await pdfCropToFigure(canvas,colLeft,prevBottom+2,colW,gap-4,'figure',docId,figIdx++);
-     figures.push({...f,offset:content.length});content+=FIG_MARK+'\n';
+     pending.push({canvas:pdfMakeCrop(canvas,colLeft,prevBottom+2,colW,gap-4),kind:'figure',offset:content.length,figIdx:figIdx++});
+     content+=FIG_MARK+'\n';
     }else if(gap>prevLineH*1.15){content+='\n';}   // paragraph break, no figure
    }
    // Gaps within the row: wide space between two words on the same line.
-   let cur=colLeft;
+   // Nearby gaps are merged into one span before any cropping happens — a
+   // single expression (a fraction, a run of subscripted terms) often
+   // shows up as several small gaps in a row, and treating each as its
+   // own image both reads as choppy and costs one upload per fragment
+   // instead of one for the whole thing.
+   const rawGaps=[];
+   {let c=colLeft;
+    for(let i=0;i<row.items.length;i++){
+     const it=row.items[i],avgCharW=it.w/Math.max(1,it.str.length),gap=it.x-c;
+     if(c>colLeft&&gap>avgCharW*PDF_INLINE_GAP_MULT&&gap>PDF_MIN_CROP&&!pdfRegionIsBlank(ctx,c,row.top,gap,lineH))
+      rawGaps.push({x0:c,x1:it.x});
+     c=it.x+it.w;
+    }}
+   const spans=[];
+   rawGaps.forEach(g=>{
+    const last=spans[spans.length-1];
+    if(last&&g.x0-last.x1<PDF_FORMULA_MERGE_DIST)last.x1=Math.max(last.x1,g.x1);
+    else spans.push({x0:g.x0,x1:g.x1});
+   });
+   let cur=colLeft,si=0;
    for(let i=0;i<row.items.length;i++){
     const it=row.items[i];
-    const avgCharW=it.w/Math.max(1,it.str.length);
-    const gap=it.x-cur;
-    if(cur>colLeft&&gap>avgCharW*PDF_INLINE_GAP_MULT&&gap>PDF_MIN_CROP&&
-       !pdfRegionIsBlank(ctx,cur,row.top,gap,lineH)){
-     const f=await pdfCropToFigure(canvas,cur,row.top,gap,lineH,'formula',docId,figIdx++);
-     figures.push({...f,offset:content.length});content+=FIG_MARK;
-    }else if(cur>colLeft&&gap>avgCharW*0.4){content+=' ';}
+    while(si<spans.length&&it.x>=spans[si].x1){
+     // reached (or passed) the end of a pending span — emit it once, as
+     // a single block, before resuming normal text after it.
+     const span=spans[si++],wide=(span.x1-span.x0)>colW*0.55;
+     pending.push({canvas:pdfMakeCrop(canvas,span.x0,row.top,span.x1-span.x0,lineH),
+      kind:wide?'figure':'formula',offset:content.length,figIdx:figIdx++});
+     content+=wide?FIG_MARK+'\n':FIG_MARK;
+     cur=span.x1;
+    }
+    if(si<spans.length&&it.x>=spans[si].x0){cur=Math.max(cur,it.x+it.w);continue;}   // inside a span — folded into its image
+    const avgCharW=it.w/Math.max(1,it.str.length),gap=it.x-cur;
+    // A real inter-word gap and same-word kerning are nowhere near each
+    // other in size (kerning runs ~0, a real space is roughly half a
+    // character wide or more) — this only has to sit somewhere in that
+    // wide open middle, not find the exact boundary.
+    if(cur>colLeft&&gap>avgCharW*PDF_SPACE_GAP_MULT){content+=' ';}
     content+=it.str;cur=it.x+it.w;
    }
+   while(si<spans.length){   // a span reaching to the very end of the row
+    const span=spans[si++],wide=(span.x1-span.x0)>colW*0.55;
+    pending.push({canvas:pdfMakeCrop(canvas,span.x0,row.top,span.x1-span.x0,lineH),
+     kind:wide?'figure':'formula',offset:content.length,figIdx:figIdx++});
+    content+=wide?FIG_MARK+'\n':FIG_MARK;cur=span.x1;
+   }
    const rightShort=(colRight-cur)>colW*0.12;   // line ended early ⇒ end of paragraph
-   content+=rightShort?'\n':' ';
+   // A hyphen at the end of a line that DIDN'T end early is almost always
+   // the typesetter breaking a word to fit the column, not a real hyphen —
+   // drop it and butt the next line's word straight up against this one
+   // rather than adding a break that isn't really there.
+   if(!rightShort&&/[a-z]-$/.test(content)){content=content.slice(0,-1);}
+   else{content+=rightShort?'\n':' ';}
    prevBottom=row.bottom;prevLineH=lineH;prevCol=row.col;
   }
+  figures.push(...await uploadPendingCrops(pending,docId));
   content+='\n';
  }
  return{content:cleanText(content),figures};
@@ -1237,11 +1444,12 @@ async function addDoc(title,author,content,domain,figures,presetId,originalUrl){
  content=cleanText(content);
  if(!content.trim())return toast('Nothing to add');
  if(content.length>300000&&!confirmBig(content.length))return;
- const id=presetId||uid('doc');
+ const id=presetId||uid('doc'),stamp=now();
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
-  language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:now(),lastReadAt:null,
+  language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:stamp,updatedAt:stamp,lastReadAt:null,
   originalUrl:(originalUrl||'').trim()||undefined});
- await store.set('pkos:doc:'+id,{id,content,figures:figures||[]});cacheDoc(id,{id,content,figures:figures||[]});save('pkos:index');
+ await store.set('pkos:doc:'+id,{id,content,figures:figures||[],contentAt:stamp});
+ cacheDoc(id,{id,content,figures:figures||[],contentAt:stamp});save('pkos:index');
  // Adding a whole document is a big enough moment to skip the usual
  // debounce (300ms locally, 3.5s to the server) and push right away —
  // otherwise switching to another device within that window can catch the
@@ -1301,8 +1509,21 @@ let readerBlocks=[],readerShown=0,readerHls=[],readerMemo={},readerFigures=[];
    specially — everywhere else in the app it's inert. */
 const FIG_MARK='\uFFFC';
 function figureHTML(f){
+ if(f.kind==='table'){
+  // No image, no upload — a table needed no interpretation to extract, so
+  // it stays real text: still searchable, still selectable, just laid out
+  // as a grid instead of flowing prose.
+  const rows=(f.grid||[]).map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('');
+  return `<table class="doctable">${rows}</table>`;
+ }
  const cls=f.kind==='figure'?'docfig':'docformula';
- return `<img class="${cls}" src="${esc(f.url)}" alt="${f.kind==='figure'?'Figure':'Formula'}" loading="lazy"${
+ // If the crop never made it (upload hiccup, deleted asset, offline first
+ // load) show that plainly instead of a browser's broken-image icon — and
+ // tapping a figure that DID load opens it full-size, since a formula
+ // crop is often too small on-page to actually read the fine print of.
+ return `<img class="${cls}" src="${esc(f.url)}" alt="${f.kind==='figure'?'Figure':'Formula'}" loading="lazy"
+  data-zoomfig="${esc(f.url)}"
+  onerror="this.outerHTML='<span class=&quot;figbroken ${cls}&quot;>⚠ image unavailable</span>'"${
   f.w&&f.h?` style="aspect-ratio:${f.w}/${f.h}"`:''}>`;
 }
 function blockHTML(b){
@@ -1371,7 +1592,6 @@ async function viewReader(keep){
  $view.innerHTML=`<div class="view reader">
   <div class="rhead">
    <div class="rtools">
-    <button class="btn plain sm" data-nav="library" style="margin-left:-8px">← Library</button>
     <span class="spacer"></span>
     <button class="btn sec sm" data-readset>Aa</button>
     <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div>
@@ -1593,6 +1813,20 @@ function composeHTML(p){
   <div class="acts"><button class="btn sm" data-commit="${p.kind}">Save</button>
    <button class="btn sec sm" data-close>Cancel</button></div></div>`);
 }
+/* [[Document Title]] anywhere in a thought, question, or piece of writing
+   becomes a tap-to-open link to that document — a lightweight cross-link
+   between what you're reading and what you've written, wiki-style. Runs
+   on already-escaped text, so it's safe to insert as-is. */
+function linkifyDocRefs(escapedText){
+ return escapedText.replace(/\[\[([^\[\]]{1,80})\]\]/g,(whole,title)=>{
+  const needle=title.trim().toLowerCase();
+  const doc=DB.index.docs.find(d=>d.title.toLowerCase()===needle)
+   ||DB.index.docs.find(d=>d.title.toLowerCase().includes(needle));
+  return doc
+   ?`<button class="doclink" data-open="${doc.id}">${esc(doc.title)}</button>`
+   :`<span class="doclinkmiss">[[${title}]]</span>`;
+ });
+}
 function detailHTML(p){
  const o=p.item,t=p.kind,m=o.sourceDocumentId?meta(o.sourceDocumentId):null;
  return shell({vocabulary:'Word',concepts:'Concept',thoughts:'Thought',questions:'Question',writings:'Writing'}[t],`<div class="card">
@@ -1603,10 +1837,10 @@ function detailHTML(p){
   ${o.definition?`<div class="f"><div class="k">Definition</div><div class="v ko">${esc(o.definition)}</div></div>`:''}
   ${o.prompt?`<div class="f"><div class="k">Prompt</div><div class="v">${esc(o.prompt)}</div></div>`:''}
   ${o.body?`<div class="f"><div class="k">${t==='writings'?'Your draft':''}</div>
-   <div class="v ko" style="white-space:pre-wrap">${esc(o.body)}</div></div>`:''}
+   <div class="v ko" style="white-space:pre-wrap">${linkifyDocRefs(esc(o.body))}</div></div>`:''}
   ${o.corrected?`<div class="f"><div class="k">Rewritten</div>
-   <div style="font-family:var(--serif);font-size:15.5px;line-height:1.6">${esc(o.corrected)}</div></div>`:''}
-  ${o.note&&t==='writings'?`<div class="f"><div class="k">Notes</div><div class="v">${esc(o.note)}</div></div>`:''}
+   <div style="font-family:var(--serif);font-size:15.5px;line-height:1.6">${linkifyDocRefs(esc(o.corrected))}</div></div>`:''}
+  ${o.note&&t==='writings'?`<div class="f"><div class="k">Notes</div><div class="v">${linkifyDocRefs(esc(o.note))}</div></div>`:''}
   ${o.sourceSentence?`<div class="f"><div class="k">Sentence</div><div class="quote">${esc(o.sourceSentence)}</div></div>`:''}
   ${o.sourceParagraph&&o.sourceParagraph!==o.sourceSentence?`<div class="f"><div class="k">Paragraph</div>
     <div class="quote" style="border-color:var(--sep-strong);font-size:13px">${esc(o.sourceParagraph)}</div></div>`:''}
@@ -1853,7 +2087,7 @@ async function recoverOrphanDocs(){
  if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
  else toast('Found entries but could not read their content');
 }
-const BUILD='2026-09-18-ui1-addbtn-rowmenu';   // bump this string on every future patch, purely so a stale deploy is easy to spot
+const BUILD='2026-09-18-stickyback-doclinks-resilience';   // bump this string on every future patch, purely so a stale deploy is easy to spot
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
   <div class="f"><div class="k">Build</div><div class="v">${esc(BUILD)} · pdf.js ${window.pdfjsLib?'loaded':'⚠ NOT loaded'}</div></div>
@@ -2401,6 +2635,13 @@ document.addEventListener('click',async e=>{
  if(th){DB.prefs.theme=th.dataset.settheme;applyPrefs();store.set('pkos:prefs',DB.prefs);return paintUsage();}
  if(state.view==='write'&&$('essayin'))state.essayText=$('essayin').value;
  const nav=T.closest('[data-nav]');if(nav)return go(nav.dataset.nav);
+ const zf=T.closest('[data-zoomfig]');
+ if(zf){
+  const ov=document.createElement('div');ov.className='figzoom';
+  ov.innerHTML=`<img src="${esc(zf.dataset.zoomfig)}">`;
+  ov.addEventListener('click',()=>ov.remove());
+  document.body.appendChild(ov);
+  return;}
  const rm=T.closest('[data-rowmenu]');
  if(rm){state.panel={type:'rowmenu',item:meta(rm.dataset.rowmenu)};return paintPanel();}
  if(T.closest('[data-adddoc]')){state.panel={type:'adddoc'};return paintPanel();}
@@ -2562,14 +2803,23 @@ document.addEventListener('click',async e=>{
     while((idx=next.indexOf(FIG_MARK,idx+1))!==-1)positions.push(idx);
     figures=figures.slice(0,positions.length).map((f,i)=>({...f,offset:positions[i]}));}
    m.chars=next.length;m.language=isKo(next.slice(0,400))?'ko':'en';
-   cacheDoc(m.id,{id:m.id,content:next,figures});await store.set('pkos:doc:'+m.id,docCache[m.id]);
+   cacheDoc(m.id,{id:m.id,content:next,figures,contentAt:m.updatedAt});
+   await store.set('pkos:doc:'+m.id,docCache[m.id]);
    msg=`Saved · ${r.moved} re-attached${r.lost?`, ${r.lost} lost their place`:''}`;}
-  save('pkos:index','pkos:knowledge');state.panel=null;lastReaderDoc=null;render();return toast(msg);}
+  save('pkos:index','pkos:knowledge');
+  flushWrites();await pushRemote();   // don't let switching devices race the debounce
+  state.panel=null;lastReaderDoc=null;render();return toast(msg);}
  const dd=T.closest('[data-docdel]');
  if(dd){const id=dd.dataset.docdel;
   if(state.confirmDel!==id){state.confirmDel=id;return paintPanel();}
   const gone=new Set(K.highlights.filter(h=>h.documentId===id).map(h=>h.id));
   DB.index.docs=DB.index.docs.filter(d=>d.id!==id);
+  // A tombstone, not just a local removal — otherwise the next pull from
+  // another device just adds this document straight back, since a normal
+  // merge only ever adds what it doesn't have. Marking it deleted lets
+  // that same merge know to leave it gone everywhere.
+  if(!DB.index.deletedIds)DB.index.deletedIds=[];
+  DB.index.deletedIds.push({id,at:now()});
   K.highlights=K.highlights.filter(h=>h.documentId!==id);
   // words and memos survive their document, but must not keep pointing at it
   ['vocabulary','concepts','thoughts','questions'].forEach(k=>K[k].forEach(o=>{
@@ -2580,6 +2830,7 @@ document.addEventListener('click',async e=>{
   try{localStorage.removeItem('pkos:doc:'+id);}catch(e){}
   if(SB.on){sbDeleteDoc(id);if(figPaths.length)sbDeleteAssets(figPaths);}   // otherwise both stay orphaned in Supabase forever
   save('pkos:index','pkos:knowledge');
+  flushWrites();await pushRemote();   // don't let switching devices race the debounce
   state.confirmDel=null;state.panel=null;return go('library');}
 
  const it=T.closest('[data-item]');
