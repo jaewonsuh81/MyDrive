@@ -225,6 +225,26 @@ h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px
 .doctable td{border:1px solid var(--sep);padding:5px 8px;text-align:center;white-space:nowrap}
 .doctable tr:first-child td{font-weight:590;background:var(--fill1)}
 
+/* ---------------- PDF reader ----------------
+   The page is a canvas, drawn exactly as pdf.js rendered it — nothing here
+   ever reflows or reorders that. The text layer sits on top, invisible and
+   selectable; the highlight layer sits above that, translucent marks
+   positioned in the same fractional coordinate space so they track the
+   page at any width. */
+.pdfstage{display:flex;flex-direction:column;align-items:center;gap:14px;padding:0 14px}
+.pdfnav{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--label2)}
+.pdfpageind{display:flex;align-items:center;gap:6px}
+.pdfcanvaswrap{position:relative;box-shadow:var(--shadow-l);border-radius:4px;overflow:hidden;background:#fff}
+.pdfcanvaswrap canvas{display:block}
+.pdftextlayer{position:absolute;inset:0;overflow:hidden;line-height:1;-webkit-user-select:text}
+.pdftextlayer span{color:transparent;cursor:text}
+.pdftextlayer ::selection{background:color-mix(in srgb,var(--blue) 26%,transparent)}
+.pdfhllayer{position:absolute;inset:0;pointer-events:none}
+.pdfhlmark{position:absolute;background:var(--hl-mark);border-radius:1px;cursor:pointer;pointer-events:auto;
+  mix-blend-mode:multiply}
+.pdfhlmark[data-k="word"]{background:var(--hl-word)}
+.pdfhlmark[data-k="memo"]{background:none;border-bottom:2px solid var(--memo-line)}
+
 /* three roles, three treatments */
 mark.hl{color:inherit;padding:.05em 0;border-radius:2px;cursor:pointer;background:var(--hl-mark);
   transition:filter .12s;box-decoration-break:clone;-webkit-box-decoration-break:clone}
@@ -1084,370 +1104,59 @@ function confirmBig(len){
  toast(`That document is ${fmtBytes(len)}. Press Add again to confirm.`);
  return false;
 }
-/* ---------- PDF extraction ----------
-   No AI, no server route: pdf.js gives us the real text layer directly, and
-   whatever ISN'T text (a formula drawn as vector curves, an embedded photo)
-   shows up as a gap — either a wide space inside a line, or a stretch of
-   vertical room between lines that's too tall to be normal paragraph
-   spacing. Both gap types are cropped from the already-rendered page canvas
-   the same way; a crop close to the full text width renders as a standalone
-   figure, a narrow one renders inline. This is a heuristic, tuned on
-   ordinary textbook layouts — the three constants below are the knobs to
-   turn if it's over- or under-cropping on a real file. */
-const PDF_SCALE=2;              // 2x = crisp on a retina screen without huge files
-const PDF_INLINE_GAP_MULT=2.4;  // a same-line gap wider than this many avg-char-widths ⇒ probably a formula
-const PDF_SPACE_GAP_MULT=0.15;  // a same-line gap wider than this (but narrower than the formula threshold
-                                 // above) is just an ordinary word space — measured kerning within a word
-                                 // runs close to zero, so this only has to clear that, not find an exact line
-const PDF_ROW_GAP_MULT=1.65;    // a between-line gap taller than this many line-heights ⇒ probably a figure/equation band
-const PDF_MIN_CROP=14;          // ignore anything smaller than this (px) — not worth a whole image asset
-const PDF_FORMULA_MERGE_DIST=26;// inline formula gaps closer together than this (px) are one expression, not several
-const PDF_COLUMN_GAP_FRAC=0.02;    // a gutter this wide (as a fraction of content width) marks a column break
-const PDF_COLUMN_ROW_COVERAGE=0.08; // a vertical strip counts as "empty" if fewer than this fraction of the
-                                    // page's rows touch it — a few centered titles/page numbers don't disqualify it
-/* Groups items into visual lines by vertical proximity, and sorts those
-   lines top to bottom. Used both for gutter-detection (below, on the whole
-   page) and for final reading order (on one column's items at a time). */
-function buildRows(subItems,col,colLeft,colRight){
- if(!subItems.length)return[];
- subItems=[...subItems].sort((a,b)=>a.top-b.top||a.x-b.x);
- const rs=[];
- subItems.forEach(it=>{
-  // A subscript's baseline (bottom) sits right where the surrounding
-  // text's does, even though it's short enough that its top misses a
-  // top-only comparison — checked real coordinates in an actual paper to
-  // confirm this. Tolerance comes from the row's established (main-text)
-  // height, not this one item's own — a small subscript checked against
-  // its own tiny height is exactly what was falling through before.
-  const row=rs.find(r=>{
-   const refH=Math.max(r.refH,it.h);
-   return Math.abs(r.bottom-it.bottom)<refH*0.45||Math.abs(r.top-it.top)<refH*0.45;
-  });
-  if(row){
-   row.items.push(it);row.top=Math.min(row.top,it.top);row.bottom=Math.max(row.bottom,it.bottom);
-   row.refH=Math.max(row.refH,it.h);
-  }else rs.push({top:it.top,bottom:it.bottom,items:[it],col,colLeft,colRight,refH:it.h});
- });
- rs.forEach(r=>r.items.sort((a,b)=>a.x-b.x));
- rs.sort((a,b)=>a.top-b.top);
- return rs;
-}
-/* A table doesn't compress into good prose no matter how the words are
-   ordered — cropping it as one image would work but throws away the
-   numbers as text entirely. This needs no interpretation, only geometry:
-   real table columns line up at the same x-position row after row, in a
-   way ordinary prose (whose word starts are essentially random from line
-   to line) never does. Column positions are fixed from the first
-   qualifying row, then a run only keeps extending while later rows mostly
-   land on those same positions — which is exactly what stops it at a
-   caption line below the table, verified against a real one. */
-function detectTables(rows){
- const out=[];let i=0;
- while(i<rows.length){
-  if(rows[i].items.length<3){out.push(rows[i]);i++;continue;}
-  let colXs=rows[i].items.map(it=>it.x).sort((a,b)=>a-b);
-  let j=i+1;
-  while(j<rows.length&&rows[j].items.length>=2&&rows[j].col===rows[i].col){
-   const aligned=rows[j].items.filter(it=>colXs.some(cx=>Math.abs(it.x-cx)<8)).length;
-   if(aligned<rows[j].items.length*0.6)break;
-   rows[j].items.forEach(it=>{if(!colXs.some(cx=>Math.abs(it.x-cx)<8))colXs.push(it.x);});
-   colXs.sort((a,b)=>a-b);
-   j++;
-  }
-  if(j-i>=3){
-   const grid=[];
-   for(let k=i;k<j;k++){
-    const cells=new Array(colXs.length).fill('');
-    rows[k].items.forEach(it=>{
-     let best=0,bestD=Infinity;
-     colXs.forEach((cx,ci)=>{const d=Math.abs(it.x-cx);if(d<bestD){bestD=d;best=ci;}});
-     cells[best]=(cells[best]?cells[best]+' ':'')+it.str;
-    });
-    grid.push(cells);
-   }
-   out.push({top:rows[i].top,bottom:rows[j-1].bottom,col:rows[i].col,
-    colLeft:rows[i].colLeft,colRight:rows[i].colRight,isTable:true,grid});
-   i=j;
-  }else{out.push(rows[i]);i++;}
- }
- return out;
-}
-/* A real column gutter is a vertical strip that almost no LINE on the page
-   ever touches — not "zero coverage" (a centered title, author list, or
-   page number is often individually narrow enough to land right in the
-   middle and would wreck a strict all-or-nothing check), but "touched by
-   only a small fraction of the page's lines." Returns the gutter's
-   x-position, or null if the page reads as one column (a report, a novel,
-   a slide) rather than two. */
-function findColumnGutter(items,left,right){
- const contentW=right-left;
- if(contentW<=0)return null;
- const rows=buildRows(items,'tmp',left,right);
- if(rows.length<8)return null;   // too little text on this page to tell either way
- const bins=120,binW=contentW/bins,touchCount=new Array(bins).fill(0);
- rows.forEach(r=>{
-  const touched=new Set();
-  r.items.forEach(it=>{
-   const b0=Math.max(0,Math.floor((it.x-left)/binW)),b1=Math.min(bins-1,Math.ceil((it.x+it.w-left)/binW));
-   for(let b=b0;b<=b1;b++)touched.add(b);
-  });
-  touched.forEach(b=>touchCount[b]++);
- });
- const lo=Math.floor(bins*0.30),hi=Math.floor(bins*0.70);   // only look near the middle of the page
- let bestStart=-1,bestLen=0,curStart=-1;
- for(let b=lo;b<hi;b++){
-  const empty=touchCount[b]/rows.length<PDF_COLUMN_ROW_COVERAGE;
-  if(empty){if(curStart<0)curStart=b;}
-  else{if(curStart>=0){const len=b-curStart;if(len>bestLen){bestLen=len;bestStart=curStart;}curStart=-1;}}
- }
- if(curStart>=0){const len=hi-curStart;if(len>bestLen){bestLen=len;bestStart=curStart;}}
- return bestLen>=bins*PDF_COLUMN_GAP_FRAC ? left+(bestStart+bestLen/2)*binW : null;
-}
+/* ---------- PDF: native page rendering ----------
+   Earlier versions of this tried to flatten a PDF into one plain-text
+   string — reconstructing column order, table grids and inline formula
+   crops by hand from geometry. Tested against a real two-column paper in
+   a real browser, that reconstruction still scrambled reading order on
+   anything layout-heavy: no realistic amount of heuristic tuning made it
+   trustworthy. So a PDF is no longer read that way at all.
+
+   Instead a PDF document is kept as itself: the original file lives in
+   Storage, and the Reader renders each page to a canvas and lays pdf.js's
+   own text items on top as an invisible, selectable text layer — exactly
+   how Adobe Reader and the browser's built-in PDF viewer work. Reading
+   order is never reconstructed because the page is never taken apart:
+   whatever order the page is drawn in is the order it's read in.
+
+   The only text this file still extracts is for Search and the "known
+   words" count on the Library — and neither cares about word order, only
+   which words are present, so it's a single unordered join per page with
+   no column/table/gap logic at all. */
 function pdfLoadLib(){
  if(!window.pdfjsLib)throw new Error('PDF support did not finish loading — check your connection and try again');
  if(!pdfjsLib.GlobalWorkerOptions.workerSrc)
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.7.76/pdf.worker.min.mjs';
 }
-/* Is this rectangle of the rendered page actually blank? Checked before
-   spending an upload on it — a big paragraph gap is usually just a
-   paragraph gap, not a missed figure. */
-function pdfRegionIsBlank(ctx,x,y,w,h){
- x=Math.max(0,Math.round(x));y=Math.max(0,Math.round(y));
- w=Math.round(w);h=Math.round(h);
- if(w<=0||h<=0)return true;
- const{data}=ctx.getImageData(x,y,w,h);
- let sum=0,sumSq=0,n=data.length/4;
- for(let i=0;i<data.length;i+=4){const v=(data[i]+data[i+1]+data[i+2])/3;sum+=v;sumSq+=v*v;}
- const mean=sum/n,variance=sumSq/n-mean*mean;
- return variance<6;   // near-uniform colour = nothing drawn here
-}
-/* The gap around a figure or formula is a rough guess at where it sits, not
-   where it ends — cropping that guess directly carries extra blank margin
-   on whichever sides the gap overshot. This re-scans the actual pixels row
-   by row and column by column inward from each edge, stopping the moment a
-   row/column stops being uniform, so the final crop hugs the real content
-   with a small, consistent margin instead of the gap's own margin. */
-function pdfTightenCrop(ctx,x,y,w,h,pad=3){
- x=Math.max(0,Math.round(x));y=Math.max(0,Math.round(y));
- w=Math.round(w);h=Math.round(h);
- if(w<=4||h<=4)return{x,y,w,h};
- const{data}=ctx.getImageData(x,y,w,h);
- const rowVar=row=>{
-  let sum=0,sumSq=0;
-  for(let col=0;col<w;col++){const i=(row*w+col)*4,v=(data[i]+data[i+1]+data[i+2])/3;sum+=v;sumSq+=v*v;}
-  const mean=sum/w;return sumSq/w-mean*mean;
- };
- const colVar=col=>{
-  let sum=0,sumSq=0;
-  for(let row=0;row<h;row++){const i=(row*w+col)*4,v=(data[i]+data[i+1]+data[i+2])/3;sum+=v;sumSq+=v*v;}
-  const mean=sum/h;return sumSq/h-mean*mean;
- };
- let top=0;while(top<h-1&&rowVar(top)<6)top++;
- let bottom=h-1;while(bottom>top&&rowVar(bottom)<6)bottom--;
- let left=0;while(left<w-1&&colVar(left)<6)left++;
- let right=w-1;while(right>left&&colVar(right)<6)right--;
- if(right-left<2||bottom-top<2)return{x,y,w,h};   // scan found nothing — keep the original guess rather than collapse to nothing
- top=Math.max(0,top-pad);bottom=Math.min(h-1,bottom+pad);
- left=Math.max(0,left-pad);right=Math.min(w-1,right+pad);
- return{x:x+left,y:y+top,w:right-left+1,h:bottom-top+1};
-}
-/* Cropping is cheap (just canvas drawing); the upload is what takes real
-   time. Splitting them lets every crop on a page get made instantly and
-   queued, then sent up together — see uploadPendingCrops below — instead
-   of waiting on each individual upload before even starting the next
-   crop. That queueing is the actual fix for a formula-dense page being
-   slow: the crops themselves were never the bottleneck. */
-function pdfMakeCrop(canvas,x,y,w,h){
- const tight=pdfTightenCrop(canvas.getContext('2d'),x,y,w,h);
- const c=document.createElement('canvas');
- c.width=Math.max(1,Math.round(tight.w));c.height=Math.max(1,Math.round(tight.h));
- c.getContext('2d').drawImage(canvas,Math.round(tight.x),Math.round(tight.y),c.width,c.height,0,0,c.width,c.height);
- return c;
-}
-const PDF_UPLOAD_BATCH=6;   // this many crops in flight at once, not hundreds and not one-at-a-time
-async function uploadPendingCrops(pending,docId){
- // One flaky upload used to fail the whole Promise.all — and with it the
- // entire document, however many pages had already processed cleanly.
- // A skipped image is a minor, visible gap (the marker stays, the picture
- // doesn't load — same handling as the broken-image case in the reader);
- // throwing away the whole document over it is a far worse outcome.
- const out=[];
- for(let i=0;i<pending.length;i+=PDF_UPLOAD_BATCH){
-  const batch=pending.slice(i,i+PDF_UPLOAD_BATCH);
-  const done=await Promise.allSettled(batch.map(async job=>{
-   const blob=await new Promise(res=>job.canvas.toBlob(res,'image/webp',0.92));
-   const path=`${SB.user.id}/${docId}/${job.figIdx}.webp`;
-   const url=await sbUploadAsset(path,blob);
-   return{offset:job.offset,kind:job.kind,path,url,w:job.canvas.width,h:job.canvas.height};
-  }));
-  done.forEach(r=>{if(r.status==='fulfilled')out.push(r.value);});
- }
- return out;
-}
-async function extractPdf(file,docId,onProgress){
+async function extractPdfSearchText(file,onProgress){
  pdfLoadLib();
  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
- let content='';const figures=[];let figIdx=0;
+ let text='';
  for(let pageNum=1;pageNum<=pdf.numPages;pageNum++){
-  onProgress?.(pageNum,pdf.numPages,figures.length);
+  onProgress?.(pageNum,pdf.numPages);
   const page=await pdf.getPage(pageNum);
-  const viewport=page.getViewport({scale:PDF_SCALE});
-  const canvas=document.createElement('canvas');
-  canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-  const ctx=canvas.getContext('2d',{willReadFrequently:true});
-  await page.render({canvasContext:ctx,viewport}).promise;
-
-  // Map every text item into canvas-pixel space (the same combined-matrix
-  // approach pdf.js's own text layer uses internally).
   const tc=await page.getTextContent();
-  const rawItems=tc.items.filter(it=>it.str.trim()).map(it=>{
-   const m=pdfjsLib.Util.transform(viewport.transform,it.transform);
-   const scaleX=Math.hypot(m[0],m[1])||1,scaleY=Math.hypot(m[2],m[3])||1;
-   return{str:it.str,x:m[4],yBase:m[5],w:it.width*scaleX,h:it.height*scaleY||scaleY};
-  });
-  if(!rawItems.length)continue;
-  rawItems.forEach(it=>{it.top=it.yBase-it.h;it.bottom=it.yBase;});
-
-  /* Page numbers and running headers/footers sit right at the physical
-     edge of the page and are short — read as ordinary text, a stray "14"
-     or a repeated conference name lands in the middle of a sentence. A
-     line counts as decoration, not prose, only when it's BOTH hard against
-     the edge AND short; a genuine heading is never this close to the
-     trimmed edge of the page. */
-  const pageH=canvas.height,edgeBand=pageH*0.055,strip=new Set();
-  buildRows(rawItems,'tmp',0,0).forEach(r=>{
-   const nearEdge=r.top<edgeBand||r.bottom>pageH-edgeBand;
-   const text=r.items.map(it=>it.str).join('').replace(/\s/g,'');
-   if(nearEdge&&text.length<=14)r.items.forEach(it=>strip.add(it));
-  });
-  const items=rawItems.filter(it=>!strip.has(it));
-  if(!items.length)continue;   // the whole "page" was a page number — nothing left to keep
-
-  const contentLeft=Math.min(...items.map(it=>it.x));
-  const contentRight=Math.max(...items.map(it=>it.x+it.w));
-  const gutter=findColumnGutter(items,contentLeft,contentRight);
-
-  /* Single column: read top to bottom, as before. Two columns: read all of
-     the left column down to the next "span" element (something wide enough
-     to cross the gutter — a title, a full-width table, a wide figure),
-     then all of the right column down to the same point, then the span
-     element itself, and repeat. This is what turns "column A line 1,
-     column B line 1, column A line 2…" back into readable prose. */
-  let orderedRows;
-  if(gutter==null){
-   orderedRows=buildRows(items,'single',contentLeft,contentRight);
-  }else{
-   const GAP=6,leftItems=[],rightItems=[],spanItems=[];
-   items.forEach(it=>{
-    if(it.x+it.w<=gutter+GAP)leftItems.push(it);
-    else if(it.x>=gutter-GAP)rightItems.push(it);
-    else spanItems.push(it);
-   });
-   const leftRows=buildRows(leftItems,'left',contentLeft,gutter);
-   const rightRows=buildRows(rightItems,'right',gutter,contentRight);
-   const spanRows=buildRows(spanItems,'span',contentLeft,contentRight);
-   orderedRows=[];let li=0,ri=0;
-   const flushTo=y=>{
-    while(li<leftRows.length&&leftRows[li].top<y)orderedRows.push(leftRows[li++]);
-    while(ri<rightRows.length&&rightRows[ri].top<y)orderedRows.push(rightRows[ri++]);
-   };
-   for(const sr of spanRows){flushTo(sr.top);orderedRows.push(sr);}
-   flushTo(Infinity);
-  }
-  orderedRows=detectTables(orderedRows);
-
-  const pending=[];   // crops for this page, uploaded together at the end — see uploadPendingCrops
-  let prevBottom=null,prevLineH=null,prevCol=null;
-  for(const row of orderedRows){
-   // Jumping from the bottom of one column back to the top of the next (or
-   // in/out of a spanning element) is a layout jump, not a gap on the
-   // page — it must never be misread as a figure.
-   if(row.col!==prevCol){prevBottom=null;prevLineH=null;}
-   const{colLeft,colRight}=row,colW=colRight-colLeft;
-   const lineH=row.bottom-row.top;
-   if(row.isTable){
-    figures.push({kind:'table',grid:row.grid,offset:content.length});
-    content+=FIG_MARK+'\n';
-    prevBottom=row.bottom;prevLineH=lineH;prevCol=row.col;
-    continue;
-   }
-   if(prevBottom!=null){
-    const gap=row.top-prevBottom;
-    if(prevLineH&&gap>prevLineH*PDF_ROW_GAP_MULT&&gap>PDF_MIN_CROP&&
-       !pdfRegionIsBlank(ctx,colLeft,prevBottom+2,colW,gap-4)){
-     pending.push({canvas:pdfMakeCrop(canvas,colLeft,prevBottom+2,colW,gap-4),kind:'figure',offset:content.length,figIdx:figIdx++});
-     content+=FIG_MARK+'\n';
-    }else if(gap>prevLineH*1.15){content+='\n';}   // paragraph break, no figure
-   }
-   // Gaps within the row: wide space between two words on the same line.
-   // Nearby gaps are merged into one span before any cropping happens — a
-   // single expression (a fraction, a run of subscripted terms) often
-   // shows up as several small gaps in a row, and treating each as its
-   // own image both reads as choppy and costs one upload per fragment
-   // instead of one for the whole thing.
-   const rawGaps=[];
-   {let c=colLeft;
-    for(let i=0;i<row.items.length;i++){
-     const it=row.items[i],avgCharW=it.w/Math.max(1,it.str.length),gap=it.x-c;
-     if(c>colLeft&&gap>avgCharW*PDF_INLINE_GAP_MULT&&gap>PDF_MIN_CROP&&!pdfRegionIsBlank(ctx,c,row.top,gap,lineH))
-      rawGaps.push({x0:c,x1:it.x});
-     c=it.x+it.w;
-    }}
-   const spans=[];
-   rawGaps.forEach(g=>{
-    const last=spans[spans.length-1];
-    if(last&&g.x0-last.x1<PDF_FORMULA_MERGE_DIST)last.x1=Math.max(last.x1,g.x1);
-    else spans.push({x0:g.x0,x1:g.x1});
-   });
-   let cur=colLeft,si=0;
-   for(let i=0;i<row.items.length;i++){
-    const it=row.items[i];
-    while(si<spans.length&&it.x>=spans[si].x1){
-     // reached (or passed) the end of a pending span — emit it once, as
-     // a single block, before resuming normal text after it.
-     const span=spans[si++],wide=(span.x1-span.x0)>colW*0.55;
-     pending.push({canvas:pdfMakeCrop(canvas,span.x0,row.top,span.x1-span.x0,lineH),
-      kind:wide?'figure':'formula',offset:content.length,figIdx:figIdx++});
-     content+=wide?FIG_MARK+'\n':FIG_MARK;
-     cur=span.x1;
-    }
-    if(si<spans.length&&it.x>=spans[si].x0){cur=Math.max(cur,it.x+it.w);continue;}   // inside a span — folded into its image
-    const avgCharW=it.w/Math.max(1,it.str.length),gap=it.x-cur;
-    // A real inter-word gap and same-word kerning are nowhere near each
-    // other in size (kerning runs ~0, a real space is roughly half a
-    // character wide or more) — this only has to sit somewhere in that
-    // wide open middle, not find the exact boundary.
-    if(cur>colLeft&&gap>avgCharW*PDF_SPACE_GAP_MULT){content+=' ';}
-    content+=it.str;cur=it.x+it.w;
-   }
-   while(si<spans.length){   // a span reaching to the very end of the row
-    const span=spans[si++],wide=(span.x1-span.x0)>colW*0.55;
-    pending.push({canvas:pdfMakeCrop(canvas,span.x0,row.top,span.x1-span.x0,lineH),
-     kind:wide?'figure':'formula',offset:content.length,figIdx:figIdx++});
-    content+=wide?FIG_MARK+'\n':FIG_MARK;cur=span.x1;
-   }
-   const rightShort=(colRight-cur)>colW*0.12;   // line ended early ⇒ end of paragraph
-   // A hyphen at the end of a line that DIDN'T end early is almost always
-   // the typesetter breaking a word to fit the column, not a real hyphen —
-   // drop it and butt the next line's word straight up against this one
-   // rather than adding a break that isn't really there.
-   if(!rightShort&&/[a-z]-$/.test(content)){content=content.slice(0,-1);}
-   else{content+=rightShort?'\n':' ';}
-   prevBottom=row.bottom;prevLineH=lineH;prevCol=row.col;
-  }
-  figures.push(...await uploadPendingCrops(pending,docId));
-  content+='\n';
+  text+=tc.items.map(it=>it.str).join(' ')+'\n\n';
  }
- return{content:cleanText(content),figures};
+ return{text:cleanText(text),pageCount:pdf.numPages};
 }
-async function addDoc(title,author,content,domain,figures,presetId,originalUrl){
+async function addDoc(title,author,content,domain,figures,presetId,originalUrl,extra){
  content=cleanText(content);
  if(!content.trim())return toast('Nothing to add');
- if(content.length>300000&&!confirmBig(content.length))return;
+ // This size gate exists to catch an accidental giant paste — it's not
+ // relevant to a PDF's search text, which is a background index the user
+ // never sees or confirms, not the thing they asked to add.
+ if(content.length>300000&&(extra||{}).kind!=='pdf'&&!confirmBig(content.length))return;
  const id=presetId||uid('doc'),stamp=now();
+ // For a PDF, `content` is only ever the order-agnostic search text (see
+ // extractPdfSearchText) — the actual reading material is the original
+ // file itself, rendered natively by the PDF reader below. `extra` carries
+ // that: kind:'pdf', pdfPath (Storage path), pageCount.
+ extra=extra||{};
  DB.index.docs.unshift({id,title:title.trim()||content.trim().slice(0,38)+'…',author:author.trim(),domain,
   language:isKo(content.slice(0,400))?'ko':'en',chars:content.length,progress:0,createdAt:stamp,updatedAt:stamp,lastReadAt:null,
-  originalUrl:(originalUrl||'').trim()||undefined});
+  originalUrl:(originalUrl||'').trim()||undefined,
+  kind:extra.kind||undefined,pdfPath:extra.pdfPath||undefined,pageCount:extra.pageCount||undefined,page:extra.kind==='pdf'?1:undefined});
  await store.set('pkos:doc:'+id,{id,content,figures:figures||[],contentAt:stamp});
  cacheDoc(id,{id,content,figures:figures||[],contentAt:stamp});save('pkos:index');
  // Adding a whole document is a big enough moment to skip the usual
@@ -1562,7 +1271,9 @@ function growReader(n){
 }
 async function viewReader(keep){
  const m=meta(state.docId);if(!m){state.view='library';return render();}
- const d=await loadDoc(state.docId);$tb.textContent=m.title;
+ $tb.textContent=m.title;
+ if(m.kind==='pdf')return viewReaderPdf(m,keep);
+ const d=await loadDoc(state.docId);
  if(!d||typeof d.content!=='string'){
   // Offline with no cached copy, or the row is gone. Say so instead of crashing.
   $view.innerHTML=`<div class="view"><div class="largetitle"><h1>${esc(m.title)}</h1></div>
@@ -1619,6 +1330,138 @@ async function viewReader(keep){
 }
 let readerShownBefore=0;
 
+/* ---------- PDF reader ----------
+   A PDF document is never turned into a paragraph flow. Each page is drawn
+   to a canvas exactly as pdf.js renders it, with an invisible text layer on
+   top built from the same items pdf.js hands back — so selection, Translate,
+   Highlight and Memo all work, but nothing about the page's own layout is
+   ever reconstructed or reordered. `pdfState` holds the one open pdf.js
+   document and which page is current; `meta(docId).page` is the durable,
+   synced copy of that (mirrors `progress`, which text documents use for the
+   same "where was I" purpose). */
+let pdfState={docId:null,doc:null,page:1,pageCount:1};
+async function pdfGetDoc(m){
+ if(pdfState.doc&&pdfState.docId===m.id)return pdfState.doc;
+ pdfLoadLib();
+ const doc=await pdfjsLib.getDocument({url:sbAssetUrl(m.pdfPath)}).promise;
+ pdfState={docId:m.id,doc,page:pdfState.docId===m.id?pdfState.page:(m.page||1),pageCount:doc.numPages};
+ return doc;
+}
+async function viewReaderPdf(m,keep){
+ loadDoc(m.id);   // warms docCache with the search text, for the "known words" count below — not awaited, it's not needed to draw the page itself
+ let doc;
+ try{doc=await pdfGetDoc(m);}
+ catch(e){
+  $view.innerHTML=`<div class="view"><div class="largetitle"><h1>${esc(m.title)}</h1></div>
+   <div class="empty">Could not load this PDF from the server.
+    ${SB.on?'Check your connection and try again.':'Sign in to fetch it.'}</div>
+   <div class="flexrow"><button class="btn sec sm" data-nav="library">Back to Library</button></div></div>`;
+  return;}
+ pdfState.docId=m.id;pdfState.doc=doc;pdfState.pageCount=doc.numPages;
+ pdfState.page=Math.max(1,Math.min(pdfState.pageCount,m.page||pdfState.page||1));
+
+ // Re-rendering the same page for a reason that only touches the side
+ // panel (a translation coming back, a note saved) would otherwise re-draw
+ // the whole canvas from scratch every time — cheap to skip when the page
+ // already showing is the one that's wanted.
+ const already=$('pdfcanvaswrap');
+ if(keep&&already&&already.dataset.docId===m.id&&+already.dataset.page===pdfState.page){
+  drawPdfHighlights(already.clientWidth,already.clientHeight);
+  return;
+ }
+
+ const known=knownCount(m.id,(docCache[m.id]||{}).content||'');
+ const st=docStat(m);
+ $view.innerHTML=`<div class="view reader pdfreader">
+  <div class="rhead">
+   <div class="rtools">
+    <span class="spacer"></span>
+    <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div>
+   <h1>${esc(m.title)}</h1>
+   <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}${
+    m.originalUrl?` · <a href="${esc(m.originalUrl)}" target="_blank" rel="noopener">Open original ↗</a>`:''}</div>
+  </div>
+  <div class="pdfstage">
+   <div class="pdfnav">
+    <button class="btn sec sm" id="pdfprev"${pdfState.page<=1?' disabled':''}>‹ Prev</button>
+    <span class="pdfpageind">Page
+     <input class="numin" id="pdfpageinput" type="number" min="1" max="${pdfState.pageCount}" value="${pdfState.page}" style="width:52px">
+     of ${pdfState.pageCount}</span>
+    <button class="btn sec sm" id="pdfnext"${pdfState.page>=pdfState.pageCount?' disabled':''}>Next ›</button>
+   </div>
+   <div class="pdfcanvaswrap" id="pdfcanvaswrap" data-doc-id="${m.id}" data-page="${pdfState.page}">
+    <canvas id="pdfcanvas"></canvas>
+    <div class="pdftextlayer" id="pdftextlayer"></div>
+    <div class="pdfhllayer" id="pdfhllayer"></div>
+   </div>
+  </div></div>`;
+ $('pdfprev').onclick=()=>pdfGoPage(pdfState.page-1);
+ $('pdfnext').onclick=()=>pdfGoPage(pdfState.page+1);
+ $('pdfpageinput').onchange=e=>pdfGoPage(+e.target.value||1);
+ lastReaderDoc=m.id;
+ await pdfRenderPage();
+}
+async function pdfGoPage(n){
+ n=Math.max(1,Math.min(pdfState.pageCount,n));
+ killCo();
+ pdfState.page=n;
+ const m=meta(pdfState.docId);
+ if(m){m.page=n;m.progress=pdfState.pageCount?n/pdfState.pageCount:0;m.lastReadAt=now();save('pkos:index');}
+ if(m)await viewReaderPdf(m,false);
+}
+async function pdfRenderPage(){
+ const wrap=$('pdfcanvaswrap'),canvas=$('pdfcanvas');if(!wrap||!canvas)return;
+ const page=await pdfState.doc.getPage(pdfState.page);
+ const dpr=window.devicePixelRatio||1;
+ const targetW=Math.max(280,Math.min(wrap.clientWidth||760,900));
+ const natural=page.getViewport({scale:1});
+ const cssScale=targetW/natural.width;
+ const cssViewport=page.getViewport({scale:cssScale});
+ const pixViewport=page.getViewport({scale:cssScale*dpr});
+ canvas.width=Math.ceil(pixViewport.width);canvas.height=Math.ceil(pixViewport.height);
+ canvas.style.width=Math.ceil(cssViewport.width)+'px';canvas.style.height=Math.ceil(cssViewport.height)+'px';
+ await page.render({canvasContext:canvas.getContext('2d'),viewport:pixViewport}).promise;
+
+ const cssW=Math.ceil(cssViewport.width),cssH=Math.ceil(cssViewport.height);
+ wrap.style.width=cssW+'px';wrap.style.height=cssH+'px';
+ wrap.dataset.docId=pdfState.docId;wrap.dataset.page=pdfState.page;
+
+ /* One <span> per pdf.js text item, invisible, positioned with the exact
+    matrix pdf.js itself uses to place that glyph run — the same
+    text-space→viewport transform the old crop-based extractor used, just
+    applied to a real DOM node instead of being read back apart as offsets.
+    Nothing here decides reading order; DOM order is simply item order,
+    i.e. whatever order the page's own content stream drew them in. */
+ const tl=$('pdftextlayer');tl.innerHTML='';
+ tl.style.width=cssW+'px';tl.style.height=cssH+'px';
+ const tc=await page.getTextContent();
+ const frag=document.createDocumentFragment();
+ tc.items.forEach(it=>{
+  if(!it.str)return;
+  const mtx=pdfjsLib.Util.transform(cssViewport.transform,it.transform);
+  const span=document.createElement('span');
+  span.textContent=it.str;
+  span.style.cssText=`position:absolute;left:0;top:0;font-size:1px;line-height:1;white-space:pre;
+   transform-origin:0% 0%;transform:matrix(${mtx[0]},${mtx[1]},${mtx[2]},${mtx[3]},${mtx[4]},${mtx[5]})`;
+  frag.appendChild(span);
+ });
+ tl.appendChild(frag);
+ drawPdfHighlights(cssW,cssH);
+}
+function drawPdfHighlights(cssW,cssH){
+ const layer=$('pdfhllayer');if(!layer)return;
+ layer.innerHTML='';layer.style.width=cssW+'px';layer.style.height=cssH+'px';
+ K.highlights.filter(h=>h.documentId===pdfState.docId&&!h.orphaned&&
+  h.position?.type==='pdf-rects'&&h.position.page===pdfState.page)
+ .forEach(h=>(h.position.rects||[]).forEach(r=>{
+  const d=document.createElement('div');
+  d.className='pdfhlmark';d.dataset.k=h.kind||'mark';d.dataset.hl=h.id;
+  d.style.left=(r.x*cssW)+'px';d.style.top=(r.y*cssH)+'px';
+  d.style.width=(r.w*cssW)+'px';d.style.height=(r.h*cssH)+'px';
+  layer.appendChild(d);
+ }));
+}
+
 function renderMargins(){
  const wrap=$('readwrap'),g=$('gutter');if(!wrap||!g)return;
  const wide=$main.clientWidth>=860;
@@ -1641,7 +1484,10 @@ function renderMargins(){
   g.appendChild(n);last=top+n.offsetHeight;});
 }
 let rz=null;
-window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{if(state.view==='reader')renderMargins();},160);});
+window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{
+ if(state.view!=='reader')return;
+ if(meta(state.docId)?.kind==='pdf')pdfRenderPage();else renderMargins();
+},160);});
 
 function offsetOf(node,off){
  const el=node.nodeType===3?node.parentElement:node,p=el?.closest('[data-start]');if(!p)return null;
@@ -1657,8 +1503,23 @@ const scheduleSel=()=>{clearTimeout(selT);selT=setTimeout(onSel,150);};
 document.addEventListener('selectionchange',scheduleSel);
 document.addEventListener('mouseup',scheduleSel);
 document.addEventListener('touchend',scheduleSel);
+/* A selection's "position" is one of two shapes, and everything downstream
+   (the dedup check, the highlight object, addHL) is written against this
+   union rather than against text-reader internals — that's what let the PDF
+   reader plug into Translate/Memo/Highlight without a second copy of them.
+    text-offset: {type:'text-offset', start, end} — a plain-text document.
+    pdf-rects:   {type:'pdf-rects', page, rects:[{x,y,w,h} as fractions of
+                 the page, 0..1]} — resolution-independent, so it still lines
+                 up after a resize, a font-size change, or on another device. */
+function posSig(pos){
+ if(!pos)return '';
+ if(pos.type==='text-offset')return 'to:'+pos.start;
+ if(pos.type==='pdf-rects')return 'pr:'+pos.page+':'+(pos.rects?.[0]?.x||0).toFixed(4)+','+(pos.rects?.[0]?.y||0).toFixed(4);
+ return '';
+}
 function onSel(){
  if(state.view!=='reader')return;
+ if(meta(state.docId)?.kind==='pdf')return onSelPdf();
  const sel=window.getSelection();
  if(!sel||!sel.rangeCount||sel.isCollapsed)return;   // dismissal is the click handler's job
  const r=sel.getRangeAt(0),body=$('docbody');
@@ -1666,15 +1527,37 @@ function onSel(){
  const text=sel.toString().trim();if(!text)return;
  const s=offsetOf(r.startContainer,r.startOffset),e=offsetOf(r.endContainer,r.endOffset);
  if(s==null||e==null)return;
- const info={text,start:Math.min(s,e),end:Math.max(s,e)};
- if($co&&$co.dataset.sig===text+'|'+info.start)return;
+ const pos={type:'text-offset',start:Math.min(s,e),end:Math.max(s,e)};
+ const info={text,pos};
+ if($co&&$co.dataset.sig===text+'|'+posSig(pos))return;
+ showCallout(r.getBoundingClientRect(),info);
+}
+/* Same job as onSel, scoped to the PDF text layer: the selection's client
+   rects (one per visual line it spans) are captured as fractions of the
+   text layer's own box, so a highlight drawn from them lands in the right
+   place however the page is later scaled. */
+function onSelPdf(){
+ const sel=window.getSelection();
+ if(!sel||!sel.rangeCount||sel.isCollapsed)return;
+ const r=sel.getRangeAt(0),tl=$('pdftextlayer');
+ if(!tl||!tl.contains(r.commonAncestorContainer))return;
+ const text=sel.toString().replace(/\s+/g,' ').trim();if(!text)return;
+ const tlRect=tl.getBoundingClientRect();
+ const w=tlRect.width||1,h=tlRect.height||1;
+ const rects=[...r.getClientRects()].map(cr=>({
+  x:(cr.left-tlRect.left)/w,y:(cr.top-tlRect.top)/h,w:cr.width/w,h:cr.height/h}))
+  .filter(rc=>rc.w>0.0005&&rc.h>0.0005);
+ if(!rects.length)return;
+ const pos={type:'pdf-rects',page:pdfState.page,rects};
+ const info={text,pos};
+ if($co&&$co.dataset.sig===text+'|'+posSig(pos))return;
  showCallout(r.getBoundingClientRect(),info);
 }
 function showCallout(rect,sel){
  killCo();
  const isTerm=isKo(sel.text)?sel.text.length<=14:sel.text.split(/\s+/).length<=4;
  const b=[[isTerm?'Word':'Translate','word','word'],['Memo','memo','memo'],['Highlight','mark','mark']];
- $co=document.createElement('div');$co.dataset.sig=sel.text+'|'+sel.start;
+ $co=document.createElement('div');$co.dataset.sig=sel.text+'|'+posSig(sel.pos);
  const narrow=window.innerWidth<=860;
  const btn=([l,a,k])=>`<button data-act="${a}"><span class="dot ${k}"></span>${l}</button>`;
  if(narrow){
@@ -1692,18 +1575,31 @@ function showCallout(rect,sel){
   act(a.dataset.act,sel,isTerm);killCo();window.getSelection()?.removeAllRanges();};
 }
 function addHL(ctx,kind){
- const dup=K.highlights.find(h=>h.documentId===ctx.documentId&&h.start===ctx.start&&h.end===ctx.end);
+ const dup=K.highlights.find(h=>h.documentId===ctx.documentId&&h.position&&posSig(h.position)===posSig(ctx.pos));
  if(dup){dup.kind=kind;return dup;}
  const h={id:uid('hl'),documentId:ctx.documentId,kind,selectedText:ctx.text,
-  start:ctx.start,end:ctx.end,position:{type:'text-offset',start:ctx.start,end:ctx.end},
+  // start/end are only meaningful for a text-offset document — the reader
+  // code that reads them directly (blockHTML, renderMargins) only ever
+  // runs for that kind of document. A PDF highlight's real position lives
+  // in `position` (page + fractional rects) instead.
+  start:ctx.pos.type==='text-offset'?ctx.pos.start:-1,
+  end:ctx.pos.type==='text-offset'?ctx.pos.end:-1,
+  position:ctx.pos,
   sentence:ctx.sentence,paragraph:ctx.paragraph,note:'',tags:[],createdAt:now(),updatedAt:now()};
  K.highlights.push(h);save('pkos:knowledge');return h;
 }
 async function act(kind,sel,isTerm){
- const d=await loadDoc(state.docId);
- const ctx={...sel,sentence:sentenceAt(d.content,sel.start,sel.end),
-  paragraph:paragraphAt(d.content,sel.start,sel.end),
-  lang:isKo(sel.text)?'ko':'en',documentId:state.docId};
+ const ctx={text:sel.text,pos:sel.pos,lang:isKo(sel.text)?'ko':'en',documentId:state.docId};
+ if(sel.pos.type==='text-offset'){
+  const d=await loadDoc(state.docId);
+  ctx.sentence=sentenceAt(d.content,sel.pos.start,sel.pos.end);
+  ctx.paragraph=paragraphAt(d.content,sel.pos.start,sel.pos.end);
+ }else{
+  // A PDF page's raw text has no clean sentence boundaries to search for
+  // (see extractPdfSearchText) — the selection itself is the best available
+  // context to show alongside a lookup.
+  ctx.sentence=sel.text;ctx.paragraph=sel.text;
+ }
 
  if(kind==='mark'){addHL(ctx,'mark');await viewReader();return toast('Highlighted');}
  if(kind==='memo'){
@@ -1927,6 +1823,22 @@ function rowMenuHTML(p){ const m=p.item;
 }
 function docEditHTML(p){
  const m=p.item,d=docCache[m.id];
+ // A PDF's actual reading material is the original file, rendered natively
+ // — there's no reconstructed text here to edit at all, just the metadata.
+ if(m.kind==='pdf'){
+  return shell('Document',`<div class="card">
+   <div class="f"><div class="k">Title</div><input class="tin" id="dtitle" style="width:100%" value="${esc(m.title)}"></div>
+   <div class="f"><div class="k">Author or source</div><input class="tin" id="dauthor" style="width:100%" value="${esc(m.author||'')}"></div>
+   <div class="f"><div class="k">Domain</div><select class="tin" id="ddomain" style="width:100%">${DOMAINS.map(x=>
+    `<option ${m.domain===x?'selected':''}>${x}</option>`).join('')}</select></div>
+   <div class="f"><div class="k">Original file link (optional)</div>
+    <input class="tin" id="dsrclink" style="width:100%" placeholder="Google Drive, Dropbox, anywhere" value="${esc(m.originalUrl||'')}"></div>
+   <div class="f" style="font-size:11.5px;color:var(--label3);line-height:1.45">
+    ${m.pageCount||'?'} pages · read exactly as the PDF was authored, so there's no text here to edit.</div>
+   <div class="acts"><button class="btn sm" data-docsave="${m.id}">Save</button>
+    <button class="btn sec sm" data-close>Cancel</button>
+    <button class="btn danger" data-docdel="${m.id}">${state.confirmDel===m.id?'Tap again to delete':'Delete document'}</button></div></div>`);
+ }
  const hasFigs=(d?.figures||[]).length>0;
  // The image position markers are one invisible character each — editable
  // as raw text, they'd be a landmine (delete one by accident, that image's
@@ -2087,7 +1999,7 @@ async function recoverOrphanDocs(){
  if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
  else toast('Found entries but could not read their content');
 }
-const BUILD='2026-09-18-stickyback-doclinks-resilience';   // bump this string on every future patch, purely so a stale deploy is easy to spot
+const BUILD='2026-09-19-native-pdf-pages';   // bump this string on every future patch, purely so a stale deploy is easy to spot
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
   <div class="f"><div class="k">Build</div><div class="v">${esc(BUILD)} · pdf.js ${window.pdfjsLib?'loaded':'⚠ NOT loaded'}</div></div>
@@ -2783,14 +2695,20 @@ document.addEventListener('click',async e=>{
   state.confirmDel=null;state.panel={type:'docedit',item:m};return paintPanel();}
  const ds=T.closest('[data-docsave]');
  if(ds){
-  const m=meta(ds.dataset.docsave),prevRec=docCache[m.id]||{},prev=prevRec.content||'';
+  const m=meta(ds.dataset.docsave);
+  m.title=$('dtitle').value.trim()||m.title;
+  m.author=$('dauthor').value.trim();m.domain=$('ddomain').value;
+  m.originalUrl=$('dsrclink').value.trim();m.updatedAt=now();
+  // A PDF has no reconstructed text to save back — see docEditHTML — so
+  // there's nothing here to reanchor highlights against either.
+  if(m.kind==='pdf'){
+   save('pkos:index');flushWrites();await pushRemote();
+   state.panel=null;render();return toast('Saved');}
+  const prevRec=docCache[m.id]||{},prev=prevRec.content||'';
   let figures=prevRec.figures||[];
   let raw=$('dcontent').value;
   if(figures.length)raw=raw.split('[image]').join(FIG_MARK);
   const next=cleanText(raw);
-  m.title=$('dtitle').value.trim()||m.title;
-  m.author=$('dauthor').value.trim();m.domain=$('ddomain').value;
-  m.originalUrl=$('dsrclink').value.trim();m.updatedAt=now();
   let msg='Saved';
   if(next!==prev){
    const r=reanchor(m.id,next);
@@ -2812,8 +2730,9 @@ document.addEventListener('click',async e=>{
  const dd=T.closest('[data-docdel]');
  if(dd){const id=dd.dataset.docdel;
   if(state.confirmDel!==id){state.confirmDel=id;return paintPanel();}
-  const gone=new Set(K.highlights.filter(h=>h.documentId===id).map(h=>h.id));
+  const delMeta=meta(id);   // read before the filter below removes it
   DB.index.docs=DB.index.docs.filter(d=>d.id!==id);
+  const gone=new Set(K.highlights.filter(h=>h.documentId===id).map(h=>h.id));
   // A tombstone, not just a local removal — otherwise the next pull from
   // another device just adds this document straight back, since a normal
   // merge only ever adds what it doesn't have. Marking it deleted lets
@@ -2826,6 +2745,7 @@ document.addEventListener('click',async e=>{
    if(o.sourceDocumentId===id)o.sourceDocumentId=null;
    if(gone.has(o.sourceHighlightId))o.sourceHighlightId=null;}));
   const figPaths=(docCache[id]?.figures||[]).map(f=>f.path).filter(Boolean);
+  if(delMeta?.pdfPath)figPaths.push(delMeta.pdfPath);
   delete docCache[id];knownCache={id:null,n:-1,count:0};
   try{localStorage.removeItem('pkos:doc:'+id);}catch(e){}
   if(SB.on){sbDeleteDoc(id);if(figPaths.length)sbDeleteAssets(figPaths);}   // otherwise both stay orphaned in Supabase forever
@@ -2981,16 +2901,21 @@ async function handleFilePick(f){
  if(!f)return;
  const isPdf=/\.pdf$/i.test(f.name)||f.type==='application/pdf';
  if(isPdf){
-  if(!SB.on)return toast('Sign in first — a PDF\'s images need Supabase Storage to live in');
+  // The original PDF itself is what gets read (see the "PDF: native page
+  // rendering" section) — it has to live somewhere every device can fetch
+  // it from, which means Storage, which means signed in.
+  if(!SB.on)return toast('Sign in first — a PDF needs Supabase Storage to live in, so every device can open the same one');
   downloadBlob(f,f.name);   // keep a copy of the original before touching it at all
   const title=f.name.replace(/\.pdf$/i,''),docId=uid('doc');
-  showProgress('Reading page 1…');
+  showProgress('Reading…');
   try{
-   const{content,figures}=await extractPdf(f,docId,(n,total,figSoFar)=>
-    showProgress(`Reading page ${n} of ${total}…${figSoFar?` (${figSoFar} image${figSoFar===1?'':'s'} so far)`:''}`));
+   const{text,pageCount}=await extractPdfSearchText(f,(n,total)=>showProgress(`Reading page ${n} of ${total}…`));
+   showProgress('Uploading original…');
+   const pdfPath=`${SB.user.id}/${docId}/original.pdf`;
+   await sbUploadAsset(pdfPath,f);
    hideProgress();
-   await addDoc(title,'Upload',content,DOMAINS[0],figures,docId);
-   toast(`Added — original saved to your downloads, ${figures.length} image${figures.length===1?'':'s'} embedded`);
+   await addDoc(title,'Upload',text||title,DOMAINS[0],null,docId,null,{kind:'pdf',pdfPath,pageCount});
+   toast(`Added — ${pageCount} page${pageCount===1?'':'s'}, original saved to your downloads`);
   }catch(err){hideProgress();toast('Could not read that PDF: '+err.message);}
   return;}
  // There's no image parser here either — reading one as text doesn't
