@@ -195,6 +195,20 @@ h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px
 .rhead{max-width:var(--rw,40em);margin:14px auto 22px;padding:0 14px}
 .rtools{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .rtools .spacer{flex:1}
+/* The document header used to spell out Marks/Translate/Chat/Aa/Contents/Edit
+   in full every time — reasonable when it was the only way to reach them, but
+   redundant now that the panel's own tab row (see readerTabsHTML) is always
+   sitting right there. Folded behind one ⋯ button so the title gets to be
+   the biggest thing at the top of a document again; the buttons inside are
+   the exact same ones, unchanged, just hidden until asked for. */
+.rtoolsmenu{position:relative}
+.rtoolsmenu summary{list-style:none;cursor:pointer}
+.rtoolsmenu summary::-webkit-details-marker{display:none}
+.rtoolsmenu[open] summary{background:var(--fill1)}
+.rtoolsmenu-body{position:absolute;right:0;top:calc(100% + 6px);z-index:20;
+  display:flex;flex-direction:column;gap:2px;min-width:150px;padding:6px;
+  background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);box-shadow:var(--shadow-m)}
+.rtoolsmenu-body .btn{width:100%;text-align:left}
 .rhead h1{font-family:var(--serif);font-size:29px;font-weight:600;line-height:1.17;letter-spacing:-.015em;margin:10px 0 8px}
 .rhead .meta{font-size:12.5px;color:var(--label2)}
 .readwrap{display:flex;justify-content:center;gap:22px;position:relative;padding:0 14px}
@@ -1564,11 +1578,13 @@ async function viewReader(keep){
   <div class="rhead">
    <div class="rtools">
     <span class="spacer"></span>
-    <button class="btn sec sm" data-dochl>Marks${st.m+st.n?` · ${st.m+st.n}`:''}</button>
-    <button class="btn ${DB.prefs.autoTr?'':'sec '}sm" data-autotr title="Hover a paragraph to translate it">Translate</button>
-    <button class="btn sec sm" data-chat="${m.id}">Chat</button>
-    <button class="btn sec sm" data-readset>Aa</button>
-    <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div>
+    <details class="rtoolsmenu"><summary class="btn sec sm" aria-label="More">⋯</summary>
+     <div class="rtoolsmenu-body">
+      <button class="btn sec sm" data-dochl>Marks${st.m+st.n?` · ${st.m+st.n}`:''}</button>
+      <button class="btn ${DB.prefs.autoTr?'':'sec '}sm" data-autotr title="Hover a paragraph to translate it">Translate</button>
+      <button class="btn sec sm" data-chat="${m.id}">Chat</button>
+      <button class="btn sec sm" data-readset>Aa</button>
+      <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div></details></div>
    <h1>${esc(m.title)}</h1>
    <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}${
     m.originalUrl?` · <a href="${esc(m.originalUrl)}" target="_blank" rel="noopener">Open original ↗</a>`:''}</div>
@@ -1703,8 +1719,10 @@ async function viewReaderPdf(m,keep){
   <div class="rhead">
    <div class="rtools">
     <span class="spacer"></span>
-    <button class="btn sec sm" data-chat="${m.id}">Chat</button>
-    <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div>
+    <details class="rtoolsmenu"><summary class="btn sec sm" aria-label="More">⋯</summary>
+     <div class="rtoolsmenu-body">
+      <button class="btn sec sm" data-chat="${m.id}">Chat</button>
+      <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div></details></div>
    <h1>${esc(m.title)}</h1>
    <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}${
     m.originalUrl?` · <a href="${esc(m.originalUrl)}" target="_blank" rel="noopener">Open original ↗</a>`:''}</div>
@@ -2151,12 +2169,13 @@ async function viewReaderEpub(m,keep){
   <div class="rhead">
    <div class="rtools">
     <span class="spacer"></span>
-    <button class="btn sec sm" data-dochl>Marks${st.m+st.n?` · ${st.m+st.n}`:''}</button>
-    <button class="btn ${DB.prefs.autoTr?'':'sec '}sm" data-autotr title="Hover a paragraph to translate it">Translate</button>
-    <button class="btn sec sm" data-chat="${m.id}">Chat</button>
-    <button class="btn sec sm" data-readset>Aa</button>
-    <button class="btn sec sm" data-epubtoc>Contents</button>
-    <button class="btn sec sm" data-editdoc="${m.id}">Edit</button></div>
+    <details class="rtoolsmenu"><summary class="btn sec sm" aria-label="More">⋯</summary>
+     <div class="rtoolsmenu-body">
+      <button class="btn sec sm" data-dochl>Marks${st.m+st.n?` · ${st.m+st.n}`:''}</button>
+      <button class="btn ${DB.prefs.autoTr?'':'sec '}sm" data-autotr title="Hover a paragraph to translate it">Translate</button>
+      <button class="btn sec sm" data-chat="${m.id}">Chat</button>
+      <button class="btn sec sm" data-readset>Aa</button>
+      <button class="btn sec sm" data-epubtoc>Contents</button></div></details></div>
    <h1>${esc(m.title)}</h1>
    <div class="meta">${esc(m.author||book.author||'Unknown')} · chapter ${EPUBV.chapter+1} of ${n}</div>
   </div>
@@ -2409,10 +2428,11 @@ function schedulePrefetch(){
  clearTimeout(prefetchT);
  prefetchT=setTimeout(prefetchNearby,500);
 }
-const PREFETCH_WINDOW=20;      // paragraphs above and below the reading position worth pre-warming
-const PREFETCH_BATCH=5;        // new network requests this pass is allowed to fire, nearest-first
-const PREFETCH_GAP=400;        // ms between them, so a batch never lands as a burst
-const PREFETCH_CAP_PER_MIN=12; // prefetch's own ceiling — leaves ≥28/min of the server's 40 for everything else
+const PREFETCH_WINDOW=20;       // paragraphs above and below the reading position worth pre-warming
+const PREFETCH_BATCH=8;         // new network requests this pass is allowed to fire, nearest-first
+const PREFETCH_GAP=350;         // ms between them, so a batch never lands as a burst
+const PREFETCH_CAP_PER_MIN=30;  // prefetch's own ceiling — the server allows 120/min now (see api/lookup.js),
+                                 // and this still leaves ≥90/min of that for actual hovering, lookups and chat
 function prefetchAllowed(){
  const now=Date.now();
  prefetchTimes=prefetchTimes.filter(t=>now-t<60000);
@@ -2633,7 +2653,10 @@ function readerTabsHTML(){
   {key:'chat',label:'Chat'},
   kind!=='pdf'?{key:'aa',label:'Aa'}:null,
   (kind==='pdf'||kind==='epub')?{key:'contents',label:'Contents'}:null,
-  {key:'edit',label:'Edit'},
+  // An EPUB has no reconstructed body text to save back to (same reason a
+  // PDF never got this tab), so Edit here would only ever let you touch the
+  // title/author — not worth a tab of its own.
+  kind!=='epub'?{key:'edit',label:'Edit'}:null,
  ].filter(Boolean);
  const activeKey=state.panel&&READER_TAB_KEY[state.panel.type];
  // Individual buttons, not a joined segmented pill — six labels never fit
@@ -3686,8 +3709,10 @@ function dochlHTML(){
  const m=meta(state.docId);
  const all=K.highlights.filter(h=>h.documentId===state.docId&&!h.orphaned);
  const shown=state.hlFilter==='all'?all:all.filter(h=>(h.kind||'mark')===state.hlFilter);
+ // No "All" chip — the three kinds already add up to everything, and with
+ // it gone, tapping the active chip again is what clears the filter back to
+ // showing all of them (see the data-hf handler).
  const chips=`<div class="labelrow">
-  <button class="lchip" data-hf="all" aria-current="${state.hlFilter==='all'}">All<span class="n">${all.length}</span></button>
   ${['mark','word','memo'].map(k=>`<button class="lchip" data-hf="${k}" aria-current="${state.hlFilter===k}">
    <span class="dot ${k}"></span>${KINDLABEL[k]}<span class="n">${all.filter(h=>(h.kind||'mark')===k).length}</span></button>`).join('')}</div>`;
  const rows=[...shown].sort((a,b)=>
@@ -4326,7 +4351,8 @@ document.addEventListener('click',async e=>{
  const wf=T.closest('[data-wf]');if(wf){state.wordFilter=wf.dataset.wf;return render();}
  // The kind filter now belongs to the in-document panel, so it repaints that
  // rather than the whole view.
- const hf=T.closest('[data-hf]');if(hf){state.hlFilter=hf.dataset.hf;return paintPanel();}
+ const hf=T.closest('[data-hf]');if(hf){
+  state.hlFilter=state.hlFilter===hf.dataset.hf?'all':hf.dataset.hf;return paintPanel();}
  const pt=T.closest('[data-ptab]');if(pt)return openReaderTab(pt.dataset.ptab);
  if(T.closest('[data-dochl]')){state.panel={type:'dochl'};
   if(window.innerWidth<=1120)$panel.classList.add('open');
@@ -4646,6 +4672,7 @@ document.addEventListener('click',async e=>{
   if(state.panel?.type==='adddoc'){state.panel=null;paintPanel();}
   return;}
  if(!T.closest('.callout')&&!T.closest('.actionbar'))killCo();
+ document.querySelectorAll('.rtoolsmenu[open]').forEach(d=>{if(!d.contains(T))d.removeAttribute('open');});
  }catch(err){console.error(err);toast('Error: '+(err.message||err));}
 });
 async function act2(mode,ctx){
