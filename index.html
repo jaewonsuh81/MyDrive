@@ -940,7 +940,7 @@ let state={view:'today',docId:null,panel:null,tab:'concepts',wordFilter:'all',hl
    never destroys the tab you left. Only the reader's own tabs (Marks,
    Translate, Chat, Aa, Contents, Edit) are tracked; one-off panels (menus,
    forms, settings) pass straight through untouched. */
-const READER_TAB_KEY={result:'translate',quicktr:'translate',detail:'translate',hl:'translate',
+const READER_TAB_KEY={result:'translate',quicktr:'translate',detail:'translate',hl:'translate',translate:'translate',
  chat:'chat',dochl:'marks',readset:'aa',pdfoutline:'contents',epubtoc:'contents',docedit:'edit'};
 (function(){
  let _panel=state.panel;
@@ -2386,19 +2386,32 @@ async function hoverTranslate(p){
    pre-warms llm()'s own cache for a window of paragraphs around wherever the
    reader currently is, so by the time the cursor gets there, hoverTranslate
    above finds it already in DB.tcache and shows it with no wait at all.
-   Deliberately modest: one request in flight at a time, nothing re-fetched
-   that's already cached, and it bails immediately if auto-translate gets
-   turned off or the reader is left — this is a convenience prefetch, not a
-   reason to burn through the day's API quota translating a book no one is
-   reading yet. */
-let prefetchT=null,prefetchBusy=false;
+
+   The server caps a single connection at 40 requests/min total, shared with
+   every real action in the app — sending a chat message, a deliberate
+   lookup, essay feedback. A first version of this walked the whole window
+   and fired one request per uncached paragraph with no ceiling of its own,
+   which on a continuously-scrolled chapter could eat most of that budget by
+   itself and started throwing "too many requests" at ordinary things like
+   hitting Enter in Chat. PREFETCH_CAP_PER_MIN below is prefetch's own hard
+   share of the 40 — well under half, so the rest of the app never has to
+   wait behind a background guess about what you might hover next. */
+let prefetchT=null,prefetchBusy=false,prefetchTimes=[];
 function schedulePrefetch(){
  if(!DB.prefs.autoTr||state.view!=='reader')return;
  if(meta(state.docId)?.kind==='pdf')return;
  clearTimeout(prefetchT);
  prefetchT=setTimeout(prefetchNearby,500);
 }
-const PREFETCH_WINDOW=20;   // paragraphs above and below the reading position
+const PREFETCH_WINDOW=20;      // paragraphs above and below the reading position worth pre-warming
+const PREFETCH_BATCH=5;        // new network requests this pass is allowed to fire, nearest-first
+const PREFETCH_GAP=400;        // ms between them, so a batch never lands as a burst
+const PREFETCH_CAP_PER_MIN=12; // prefetch's own ceiling — leaves ≥28/min of the server's 40 for everything else
+function prefetchAllowed(){
+ const now=Date.now();
+ prefetchTimes=prefetchTimes.filter(t=>now-t<60000);
+ return prefetchTimes.length<PREFETCH_CAP_PER_MIN;
+}
 async function prefetchNearby(){
  // One pass at a time — a run already in flight keeps going at its own
  // pace, and the scroll that just fired will get its own pass once this one
@@ -2416,18 +2429,29 @@ async function prefetchNearby(){
  let centerI=0,best=Infinity;
  all.forEach((el,i)=>{const d=Math.abs(el.offsetTop-mid);if(d<best){best=d;centerI=i;}});
  const from=Math.max(0,centerI-PREFETCH_WINDOW),to=Math.min(all.length,centerI+PREFETCH_WINDOW+1);
+ // Nearest to the reading position first — that's what's about to be
+ // hovered, so it's what the limited budget should go to first. The far
+ // edges of the window fill in on later passes as the reader keeps scrolling.
+ const order=[];for(let i=from;i<to;i++)order.push(i);
+ order.sort((a,b)=>Math.abs(a-centerI)-Math.abs(b-centerI));
  prefetchBusy=true;
  try{
-  for(let i=from;i<to;i++){
+  let sent=0;
+  for(const i of order){
+   if(sent>=PREFETCH_BATCH)break;
+   if(!prefetchAllowed())break;
    if(!DB.prefs.autoTr||state.view!=='reader'||state.docId!==m.id)break;
    const text=(all[i].textContent||'').trim();
    if(text.length<8)continue;
    const key=hash('passage|'+text);
    if(DB.tcache[key]||inflight.has(key))continue;
+   prefetchTimes.push(Date.now());
    try{await llm('passage',text,'',isKo(text)?'ko':'en',key);}
    catch(e){/* a quota hiccup here just means this one paragraph stays slow on
                actual hover — not worth surfacing as an error for a prefetch
                nobody asked for by name */}
+   sent++;
+   if(sent<PREFETCH_BATCH)await new Promise(r=>setTimeout(r,PREFETCH_GAP));
   }
  }finally{prefetchBusy=false;}
 }
@@ -2606,8 +2630,11 @@ function readerTabsHTML(){
   {key:'edit',label:'Edit'},
  ].filter(Boolean);
  const activeKey=state.panel&&READER_TAB_KEY[state.panel.type];
- return `<div class="seg ptabseg">${tabs.map(t=>
-  `<button data-ptab="${t.key}" aria-current="${activeKey===t.key}">${esc(t.label)}</button>`).join('')}</div>`;
+ // Individual buttons, not a joined segmented pill — six labels never fit
+ // one pill on a 360px panel, and a pill that wraps mid-shape reads as
+ // broken. Separate buttons wrap the same way the old header row always did.
+ return `<div class="rtools ptabsrow">${tabs.map(t=>
+  `<button class="btn ${activeKey===t.key?'':'sec '}sm" data-ptab="${t.key}">${esc(t.label)}</button>`).join('')}</div>`;
 }
 /* Restores a cached tab as-is (a chat mid-conversation, the last thing
    translated); only builds fresh content for tabs that don't accumulate
@@ -2616,7 +2643,10 @@ function readerTabsHTML(){
 async function openReaderTab(key){
  const m=meta(state.docId);
  if(key==='chat'){state.panel=state.panelCache.chat||{type:'chat',docId:state.docId,messages:[]};}
- else if(key==='translate'){state.panel=state.panelCache.translate||null;}
+ // A hover or a selection lookup already filled this in — show it. Nothing
+ // yet: land on the input box itself, not a passive "select some text" hint,
+ // so the tab is a working tool the moment you open it.
+ else if(key==='translate'){state.panel=state.panelCache.translate||{type:'translate',input:'',data:null};}
  else if(key==='marks'){state.panel={type:'dochl'};}
  else if(key==='aa'){state.panel={type:'readset'};}
  else if(key==='edit'){await loadDoc(state.docId);state.confirmDel=null;state.panel={type:'docedit',item:m};}
@@ -2646,7 +2676,7 @@ function paintPanel(){
           pdfoutline:pdfOutlineHTML,pdffind:pdfFindHTML,
           dochl:dochlHTML,linkpick:linkPickHTML,
           foldername:folderNameHTML,foldermove:folderMoveHTML,foldermenu:folderMenuHTML,epubtoc:epubTocHTML,
-          chat:chatHTML,quicktr:quickTrHTML};
+          chat:chatHTML,quicktr:quickTrHTML,translate:translateHTML};
  $panelScroll.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
  // Contents and Find are lists to pick from, not forms — stealing focus into
  // them would take the keyboard away from the find box that just ran.
@@ -2666,6 +2696,42 @@ function quickTrHTML(p){
   <div class="err">${esc(p.error)}</div></div>`;
  return `<div class="qtr"><button class="iconbtn qtrclose" data-close>${svg('close',2)}</button>
   <div class="qtrtext">${esc(p.data?.translation||'')}</div></div>`;
+}
+/* The Translate tab's own home, not just a place hover/selection results
+   land — you can type or paste anything (a phrase from outside the
+   document, a word you're just curious about) and get the same passage
+   translation resultHTML gives a selection. Reuses the same 'passage' mode
+   and the same llm() cache, so a phrase looked up here and one later hovered
+   in the text share a cache entry instead of paying for it twice. */
+function translateHTML(p){
+ const showRecent=!p.data&&!p.loading&&!p.error;
+ const recent=showRecent?[...K.vocabulary].slice(-4).reverse():[];
+ return shell('Translate',`<div class="card">
+   <div class="f"><div class="k">Text</div>
+    <textarea class="tin" id="trin" style="width:100%;min-height:64px;line-height:1.55"
+     placeholder="번역하거나 뜻을 찾을 단어·문장을 입력하세요">${esc(p.input||'')}</textarea></div>
+   <div class="acts"><button class="btn sm" data-trrun${p.loading?' disabled':''}>${p.loading?'Translating…':'Translate'}</button></div></div>
+  ${p.loading?`<div class="card"><span class="spin"></span></div>`:''}
+  ${p.error?`<div class="err">${esc(p.error)}</div>`:''}
+  ${p.data?`<div class="card">
+   <div class="f"><div class="k">Translation</div><div class="v ko" style="font-size:15.5px">${esc(p.data.translation||'')}</div></div>
+   ${p.data.gist?`<div class="f"><div class="k">Gist</div><div class="v ko">${esc(p.data.gist)}</div></div>`:''}
+   ${(p.data.terms||[]).length?`<div class="f"><div class="k">Key terms</div>${p.data.terms.map(t=>
+    `<div class="v" style="margin:4px 0"><b style="font-weight:590">${esc(t.term)}</b> · ${esc(t.meaning)}</div>`).join('')}</div>`:''}</div>`:''}
+  ${recent.length?`<h3 class="sec" style="font-size:13px;color:var(--label3);margin:18px 0 8px">Recent words</h3>
+   <div class="list">${recent.map(v=>`<button class="item" data-item="vocabulary:${v.id}">
+   <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div></button>`).join('')}</div>`:''}`);
+}
+async function runTranslateTab(){
+ const p=state.panel;if(!p||p.type!=='translate'||p.loading)return;
+ const ta=$('trin');const text=(ta?.value||'').trim();
+ if(!text)return;
+ p.input=text;p.loading=true;p.error=null;p.data=null;paintPanel();
+ const lang=isKo(text)?'ko':'en';
+ const key=hash('passage|'+text);
+ try{const{data}=await llm('passage',text,'',lang,key);p.data=data;}
+ catch(e){p.error=e.message;}
+ p.loading=false;paintPanel();
 }
 /* ---------- Chat, grounded in the open document ---------- */
 function chatHTML(p){
@@ -4403,6 +4469,7 @@ document.addEventListener('click',async e=>{
  const cb=T.closest('[data-chat]');
  if(cb)return openReaderTab('chat');   // resumes the conversation already in progress, doesn't reset it
  if(T.closest('[data-chatsend]'))return sendChat();
+ if(T.closest('[data-trrun]'))return runTranslateTab();
  const cs=T.closest('[data-chatsave]');
  if(cs){
   const p=state.panel;if(!p||p.type!=='chat')return;
@@ -4585,6 +4652,7 @@ async function act2(mode,ctx){
 }
 document.addEventListener('keydown',e=>{
  if(e.target.id==='chatin'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();return sendChat();}
+ if(e.target.id==='trin'&&e.key==='Enter'&&!e.shiftKey){e.preventDefault();return runTranslateTab();}
  if(e.target.id==='clozein'&&e.key==='Enter'){
   const v=state.testQueue[0];
   state.clozeOk=e.target.value.trim().toLowerCase()===String(v.word).trim().toLowerCase();
