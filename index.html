@@ -238,6 +238,33 @@ h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px
 .pdfbar .spacer{flex:1}
 .pdfbar .btn[aria-current="true"]{background:var(--blue);color:#fff}
 .pdfbar .tin{padding:5px 9px;font-size:12.5px}
+/* One row of quiet controls instead of three rows of chips. A select reads
+   as a single word plus a caret, collapses four options into the space of
+   one, and on a phone opens the native picker. */
+.toolrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.toolrow .spacer{flex:1}
+.minisel{appearance:none;-webkit-appearance:none;background:transparent;border:1px solid transparent;
+  border-radius:99px;padding:4px 22px 4px 9px;font:inherit;font-size:12.5px;font-weight:510;
+  color:var(--label2);cursor:pointer;transition:.14s var(--ease);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='%238a8a8e' stroke-width='1.4' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat;background-position:right 7px center}
+.minisel:hover{background-color:var(--fill2);color:var(--label)}
+.minisel:focus{outline:none;border-color:var(--sep-strong)}
+.crumbpath{display:flex;align-items:center;gap:3px;flex-wrap:wrap;font-size:13px;min-width:0}
+.crumbpath button{background:none;border:none;padding:3px 6px;border-radius:7px;font:inherit;
+  color:var(--label2);cursor:pointer}
+.crumbpath button:hover{background:var(--fill2);color:var(--label)}
+.crumbpath button[aria-current="true"]{color:var(--label);font-weight:590}
+.crumbpath .sep{color:var(--label3);font-size:11px}
+.folderchip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;
+  border:1px solid var(--sep);background:var(--elevated);font-size:12.5px;color:var(--label);
+  cursor:pointer;transition:.14s var(--ease)}
+.folderchip:hover{border-color:var(--sep-strong);background:var(--fill1)}
+.folderchip .n{color:var(--label3);font-size:11px}
+.iconchip{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+  border-radius:50%;border:1px solid transparent;background:transparent;color:var(--label3);
+  font-size:15px;cursor:pointer;transition:.14s var(--ease)}
+.iconchip:hover{background:var(--fill2);color:var(--label)}
 .dstats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px}
 .dstat{flex:1 1 84px;background:var(--elevated);border:1px solid var(--sep);border-radius:var(--r2);
   padding:10px 12px;display:flex;flex-direction:column;gap:2px}
@@ -873,7 +900,7 @@ The trade-off is not free. A thin representation carries less information, and a
 기록되지 않은 판단은 시간이 지나면 소실된다. 반년 뒤의 나는 그때의 제약 조건을 기억하지 못하고, 결론만 남은 코드를 보며 왜 이렇게 했는지 되묻게 된다. 판단의 근거를 남기는 일은 문서화가 아니라 미래의 의사결정 비용을 낮추는 투자다.`}];
 
 let state={view:'today',docId:null,panel:null,tab:'concepts',wordFilter:'all',hlFilter:'all',
- domain:'all',folderId:null,folderOnly:false,sort:'recent',query:'',qFilter:'Unanswered',kGroup:'recent',kSort:'new',reviewMode:'cards',digestOffset:0,revealed:false,testing:false,testQueue:[],
+ domain:'all',folderId:null,folderOnly:false,sort:'recent',query:'',qFilter:'Unanswered',kGroup:'recent',kSort:'new',wSort:'new',reviewMode:'cards',digestOffset:0,revealed:false,testing:false,testQueue:[],
  briefLoading:false,pickVocab:new Set(),openDoc:null,allLinks:false,
  editing:null,prompt:null,promptSeed:0,essayText:'',essay:null,
  qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
@@ -1114,6 +1141,7 @@ $main.addEventListener('scroll',()=>{
   // blocks — and which pages are drawn is the observer's business, not the
   // scroll handler's.
   if(m.kind==='pdf')return pdfTrackScroll();
+  if(m.kind==='epub'){clearTimeout(epubPlaceT);epubPlaceT=setTimeout(epubSavePlace,400);return;}
   // Draw more before the reader reaches the end of what exists.
   if(readerShown<readerBlocks.length&&
      $main.scrollTop+$main.clientHeight>$main.scrollHeight-1400){
@@ -1178,6 +1206,17 @@ function docsInFolder(domain,folderId,deep){
   return scope.has(d.folderId);
  });
 }
+function folderMenuHTML(p){
+ const f=folderById(p.id);if(!f)return shell('Folder','');
+ const inside=docsInFolder(f.domain,f.id,true).length;
+ return shell(esc(f.name),`<div class="card">
+  <div class="f"><div class="k">Holds</div><div class="v">${inside} document${inside===1?'':'s'}</div></div>
+  <div class="acts">
+   <button class="btn sec sm" data-renamefolder="${f.id}">Rename</button>
+   <button class="btn sec sm" data-close>Cancel</button>
+   <button class="btn danger" data-delfolder="${f.id}">${state.confirmDel==='f:'+f.id?'Tap again to delete':'Delete folder'}</button></div>
+  </div>`);
+}
 function folderNameHTML(p){
  return shell(p.id?'Rename folder':'New folder',`<div class="card">
   <input class="tin" id="foldname" style="width:100%" placeholder="Robotics, Thesis, Q3 reading…" value="${esc(p.name||'')}">
@@ -1220,22 +1259,28 @@ function viewLibrary(){
    <span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${list.length}</span></h3>
    <div class="list">${list.map(docRow).join('')}</div>`:'';
  const counts=DB.index.docs.reduce((m,d)=>{m[d.domain]=(m[d.domain]||0)+1;return m;},{});
+ const sortSel=`<select class="minisel" data-sortsel>${[['recent','Recent'],['title','Title'],['progress','Progress']]
+  .map(([k,l])=>`<option value="${k}"${state.sort===k?' selected':''}>${l}</option>`).join('')}</select>${
+  state.folderId||foldersUnder(state.folderId,dom).length
+   ?`<select class="minisel" data-scopesel>
+     <option value="deep"${!state.folderOnly?' selected':''}>Including subfolders</option>
+     <option value="only"${state.folderOnly?' selected':''}>This folder only</option></select>`:''}`;
  const subs=dom==='all'?[]:foldersUnder(state.folderId,dom);
  const trail=state.folderId?folderTrail(state.folderId):[];
- const folderBar=dom==='all'?'':`
-  <div class="labelrow crumbs">
-   <button class="lchip" data-folder="" aria-current="${!state.folderId}">${esc(dom.split(' / ')[0])}</button>
-   ${trail.map(f=>`<span class="crumbsep">›</span>
-    <button class="lchip" data-folder="${f.id}" aria-current="${state.folderId===f.id}">${esc(f.name)}</button>`).join('')}
+ const folderBar=dom==='all'?`<div class="toolrow"><span class="spacer"></span>${sortSel}</div>`:`
+  <div class="toolrow">
+   <span class="crumbpath">
+    <button data-folder="" aria-current="${!state.folderId}">${esc(dom.split(' / ')[0])}</button>
+    ${trail.map(f=>`<span class="sep">›</span>
+     <button data-folder="${f.id}" aria-current="${state.folderId===f.id}">${esc(f.name)}</button>`).join('')}
+   </span>
+   ${folderDepth(state.folderId)<FOLDER_MAX_DEPTH?'<button class="iconchip" data-newfolder title="New folder">＋</button>':''}
+   ${state.folderId?`<button class="iconchip" data-foldermenu="${state.folderId}" title="Folder options">⋯</button>`:''}
+   <span class="spacer"></span>${sortSel}
   </div>
-  <div class="labelrow">
-   ${subs.map(f=>`<button class="lchip" data-folder="${f.id}">▸ ${esc(f.name)}
-     <span class="n">${docsInFolder(dom,f.id,true).length}</span></button>`).join('')}
-   ${folderDepth(state.folderId)<FOLDER_MAX_DEPTH?'<button class="lchip" data-newfolder>＋ Folder</button>':''}
-   ${state.folderId?`<button class="lchip" data-renamefolder="${state.folderId}">Rename</button>
-     <button class="lchip" data-delfolder="${state.folderId}">${state.confirmDel==='f:'+state.folderId?'Tap again':'Delete folder'}</button>`:''}
-   ${state.folderId||subs.length?`<button class="lchip" data-folderonly aria-current="${!!state.folderOnly}">Only this folder</button>`:''}
-  </div>`;
+  ${subs.length?`<div class="toolrow" style="margin-top:0">${subs.map(f=>
+    `<button class="folderchip" data-folder="${f.id}">${esc(f.name)}
+     <span class="n">${docsInFolder(dom,f.id,true).length}</span></button>`).join('')}</div>`:''}`;
  $view.innerHTML=`<div class="view" id="libview">
   <div class="largetitle"><h1>Library</h1><span class="c">${DB.index.docs.length}</span>
    <button class="btn sm" data-adddoc style="margin-left:auto">+ Add</button></div>
@@ -1243,8 +1288,6 @@ function viewLibrary(){
    <button class="lchip" data-dom="all" aria-current="${state.domain==='all'}">All<span class="n">${DB.index.docs.length}</span></button>
    ${DOMAINS.map(x=>`<button class="lchip" data-dom="${esc(x)}" aria-current="${state.domain===x}">${esc(x.split(' / ')[0])}<span class="n">${counts[x]||0}</span></button>`).join('')}</div>
   ${folderBar}
-  <div class="seg">${[['recent','Recent'],['title','Title'],['progress','Progress']]
-   .map(([k,l])=>`<button data-sort="${k}" aria-current="${state.sort===k}">${l}</button>`).join('')}</div>
   ${DB.index.docs.length?'':'<div class="empty">No documents yet — drag a file in, or tap + Add</div>'}
   ${sec('Reading now',g.reading)}${sec('Not started',g.unread)}${sec('Finished',g.done)}
   ${DB.index.docs.length&&!docs.length?'<div class="empty">Nothing here</div>':''}</div>`;
@@ -1300,7 +1343,7 @@ async function addDoc(title,author,content,domain,figures,presetId,originalUrl,e
  // This size gate exists to catch an accidental giant paste — it's not
  // relevant to a PDF's search text, which is a background index the user
  // never sees or confirms, not the thing they asked to add.
- if(content.length>300000&&(extra||{}).kind!=='pdf'&&!confirmBig(content.length))return;
+ if(content.length>300000&&!(extra||{}).kind&&!confirmBig(content.length))return;
  const id=presetId||uid('doc'),stamp=now();
  // For a PDF, `content` is only ever the order-agnostic search text (see
  // extractPdfSearchText) — the actual reading material is the original
@@ -1910,16 +1953,32 @@ async function epubParse(buf){
 /* The table of contents, from the EPUB's own nav document. Entries point at
    a file in the spine, so a tap can turn into "chapter 7". */
 async function epubToc(book){
- if(!book.navHref)return[];
- const html=await zipText(book.zip,book.navHref);if(!html)return[];
- const doc=new DOMParser().parseFromString(html,'text/html');
- const nav=doc.querySelector('nav[*|type="toc"],nav#toc,nav')||doc.body;
- return[...nav.querySelectorAll('a[href]')].map(a=>{
-  const target=zipResolve(book.navHref,a.getAttribute('href'));
+ const clean=t=>String(t||'').replace(/\s+/g,' ').trim().slice(0,110);
+ const entry=(base,href,label)=>{
+  const target=zipResolve(base,href);
   const idx=book.spine.findIndex(s=>s.href===target);
-  const depth=Math.max(0,(a.closest('ol')?.querySelectorAll('ol')?0:0)+
-   ([...document.querySelectorAll('x')].length));   // depth is cosmetic; keep it flat and legible
-  return{label:a.textContent.trim().slice(0,110),chapter:idx,depth};
+  return{label:clean(label),chapter:idx,frag:(href.split('#')[1]||'')};
+ };
+ if(book.navHref){
+  const html=await zipText(book.zip,book.navHref);
+  if(html){
+   const doc=new DOMParser().parseFromString(html,'text/html');
+   const nav=doc.querySelector('nav')||doc.body;
+   const out=[...nav.querySelectorAll('a[href]')]
+    .map(a=>entry(book.navHref,a.getAttribute('href'),a.textContent))
+    .filter(x=>x.chapter>=0&&x.label);
+   if(out.length)return out;
+  }
+ }
+ /* No nav document: an EPUB 2 book, where the contents live in an NCX file
+    instead. Most books that aren't freshly made are this kind. */
+ const ncx=Object.values(book.manifest).find(x=>/dtbncx/.test(x.type)||/\.ncx$/i.test(x.href));
+ if(!ncx)return[];
+ const xml=await zipText(book.zip,ncx.href);if(!xml)return[];
+ const doc=new DOMParser().parseFromString(xml,'application/xml');
+ return[...doc.querySelectorAll('navPoint')].map(np=>{
+  const src=np.querySelector('content')?.getAttribute('src')||'';
+  return entry(ncx.href,src,np.querySelector('navLabel > text')?.textContent);
  }).filter(x=>x.chapter>=0&&x.label);
 }
 /* Chapters arrive as someone else's HTML, so it is rebuilt rather than
@@ -1932,18 +1991,25 @@ async function epubSanitize(book,chapterHref,root){
  const walk=[...root.querySelectorAll('*')];
  for(const el of walk){
   if(!EPUB_KEEP.has(el.tagName)){el.replaceWith(...el.childNodes);continue;}
+  const keepId=el.getAttribute('id');
   [...el.attributes].forEach(a=>{
    const n=a.name.toLowerCase();
    if(n.startsWith('on')||n==='style'||n==='class'||n==='id')el.removeAttribute(a.name);
   });
+  // Anchors have to survive: a book whose whole text is one file navigates
+  // entirely by them — its table of contents is 22 links into the same
+  // chapter. Namespaced so a book's id can never collide with the app's.
+  if(keepId)el.setAttribute('id','ep-'+keepId);
   if(el.tagName==='A'){
    const href=el.getAttribute('href')||'';
    el.removeAttribute('href');
    if(/^https?:/i.test(href)){el.setAttribute('href',href);el.setAttribute('target','_blank');el.setAttribute('rel','noopener');}
    else if(href){
     const target=zipResolve(chapterHref,href);
+    const frag=(href.split('#')[1]||'');
     const idx=book.spine.findIndex(s=>s.href===target);
-    if(idx>=0)el.setAttribute('data-epubgo',String(idx));
+    if(idx>=0){el.setAttribute('data-epubgo',String(idx));if(frag)el.setAttribute('data-epubfrag',frag);}
+    else if(frag)el.setAttribute('data-epubfrag',frag);   // a jump inside this same chapter
    }
   }
   if(el.tagName==='IMG'){
@@ -1961,7 +2027,8 @@ async function epubSanitize(book,chapterHref,root){
  }
  return root;
 }
-const EPUBV={docId:null,book:null,chapter:0,toc:null,blobs:[],text:{}};
+const EPUBV={docId:null,book:null,chapter:0,toc:null,blobs:[],text:{},frag:null};
+let epubPlaceT=null;
 function epubRelease(){
  EPUBV.blobs.forEach(u=>{try{URL.revokeObjectURL(u);}catch(e){}});
  EPUBV.blobs=[];
@@ -1973,7 +2040,7 @@ async function epubGetBook(m){
  if(!r.ok)throw new Error('Could not fetch the book');
  const book=await epubParse(await r.arrayBuffer());
  EPUBV.book=book;EPUBV.docId=m.id;EPUBV.toc=null;EPUBV.text={};
- EPUBV.chapter=Math.max(0,Math.min(book.spine.length-1,m.chapter||0));
+ EPUBV.chapter=Math.max(0,Math.min(book.spine.length-1,m.place?.chapter??m.chapter??0));
  return book;
 }
 async function viewReaderEpub(m,keep){
@@ -2029,14 +2096,40 @@ async function epubRenderChapter(){
  if(m){m.chapter=EPUBV.chapter;m.progress=book.spine.length?(EPUBV.chapter+1)/book.spine.length:0;
   m.lastReadAt=now();save('pkos:index');}
  $main.scrollTop=0;
+ requestAnimationFrame(()=>{
+  if(EPUBV.frag){const ok=epubScrollToFrag(EPUBV.frag);EPUBV.frag=null;if(ok)return;}
+  const place=m?.place;
+  if(place&&place.chapter===EPUBV.chapter&&place.ratio>0.01){
+   const h=$main.scrollHeight-$main.clientHeight;
+   if(h>0)$main.scrollTop=place.ratio*h;
+  }
+ });
 }
-async function epubGoChapter(i){
+async function epubGoChapter(i,frag){
  const book=EPUBV.book;if(!book)return;
  const n=book.spine.length;
+ const same=EPUBV.chapter===Math.max(0,Math.min(n-1,i));
  EPUBV.chapter=Math.max(0,Math.min(n-1,i));
+ EPUBV.frag=frag||null;
  killCo();
+ if(same&&frag)return epubScrollToFrag(frag);   // already on the right chapter: just move to the anchor
  const m=meta(EPUBV.docId);
  if(m)await viewReaderEpub(m,false);
+}
+function epubScrollToFrag(frag){
+ const el=document.getElementById('ep-'+frag);
+ if(!el)return false;
+ const top=el.getBoundingClientRect().top+$main.scrollTop-80;
+ $main.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+ return true;
+}
+/* Where you were inside the chapter, not just which chapter. A book whose
+   whole text is a single file needs this or every reopen starts at page one. */
+function epubSavePlace(){
+ const m=meta(EPUBV.docId);if(!m)return;
+ const h=$main.scrollHeight-$main.clientHeight;
+ m.place={chapter:EPUBV.chapter,ratio:h>0?Math.min(1,$main.scrollTop/h):0};
+ save('pkos:index');
 }
 /* Offsets are counted over the chapter's own text, so a highlight keeps its
    place no matter what size the text is being read at. */
@@ -2108,7 +2201,8 @@ function epubTocHTML(){
  const toc=EPUBV.toc||[];
  if(!toc.length)return shell('Contents',`<div class="empty">This book has no table of contents.</div>`);
  return shell('Contents',`<div class="list">${toc.map(t=>
-  `<button class="item" data-epubgo="${t.chapter}"><h4>${esc(t.label)}</h4></button>`).join('')}</div>`);
+  `<button class="item" data-epubgo="${t.chapter}"${t.frag?` data-epubfrag="${esc(t.frag)}"`:''}>
+   <h4>${esc(t.label)}</h4></button>`).join('')}</div>`);
 }
 /* Search text: every chapter's words, in spine order — which for an EPUB is
    simply the correct reading order, no reconstruction involved. */
@@ -2339,7 +2433,7 @@ function paintPanel(){
           rowmenu:rowMenuHTML,adddoc:addDocPanelHTML,
           pdfoutline:pdfOutlineHTML,pdffind:pdfFindHTML,
           dochl:dochlHTML,linkpick:linkPickHTML,
-          foldername:folderNameHTML,foldermove:folderMoveHTML,epubtoc:epubTocHTML};
+          foldername:folderNameHTML,foldermove:folderMoveHTML,foldermenu:folderMenuHTML,epubtoc:epubTocHTML};
  $panel.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
  // Contents and Find are lists to pick from, not forms — stealing focus into
  // them would take the keyboard away from the find box that just ran.
@@ -2795,7 +2889,7 @@ async function recoverOrphanDocs(){
  if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
  else toast('Found entries but could not read their content');
 }
-const BUILD='2026-09-20-epub-storage';   // bump this string on every future patch, purely so a stale deploy is easy to spot
+const BUILD='2026-09-20-epub-fixes-ui';   // bump this string on every future patch, purely so a stale deploy is easy to spot
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
   <div class="f"><div class="k">Build</div><div class="v">${esc(BUILD)} · pdf.js ${window.pdfjsLib?'loaded':'⚠ NOT loaded'}</div></div>
@@ -2911,7 +3005,15 @@ function viewWords(){
  const all=K.vocabulary,f=state.wordFilter;
  const by={all,due:dueWords(),new:all.filter(v=>!v.reps&&!v.suspended),
   learning:all.filter(v=>v.reviewStatus==='learning'&&!v.suspended),leech:all.filter(v=>v.suspended)};
- const rows=[...(by[f]||all)].reverse().map(v=>{
+ const wsort=state.wSort||'new';
+ const coll=new Intl.Collator(undefined,{sensitivity:'base',numeric:true});
+ const sorted=[...(by[f]||all)];
+ if(wsort==='az')sorted.sort((a,b)=>coll.compare(String(a.word),String(b.word)));
+ else if(wsort==='za')sorted.sort((a,b)=>coll.compare(String(b.word),String(a.word)));
+ else if(wsort==='due')sorted.sort((a,b)=>String(a.nextReviewAt||'').localeCompare(String(b.nextReviewAt||'')));
+ else if(wsort==='old')sorted.sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));
+ else sorted.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+ const rows=sorted.map(v=>{
   const m=v.sourceDocumentId?meta(v.sourceDocumentId):null;
   const over=!v.nextReviewAt||v.nextReviewAt<=now();
   return `<button class="item" data-item="vocabulary:${v.id}">
@@ -2925,8 +3027,12 @@ function viewWords(){
   <div class="largetitle"><h1>Words</h1><span class="c">${all.length}</span><span class="spacer"></span>
    ${session.length?`<button class="btn" data-test>Start test · ${session.length}</button>`
     :all.length?`<button class="btn sec" data-test>Practice</button>`:''}</div>
-  <div class="seg">${[['all','All'],['due','Due'],['new','New'],['learning','Learning'],['leech','Leech']]
-   .map(([k,l])=>`<button data-wf="${k}" aria-current="${f===k}">${l}<span class="n">${(by[k]||[]).length}</span></button>`).join('')}</div>
+  <div class="toolrow">
+   <select class="minisel" data-wfsel>${[['all','All'],['due','Due'],['new','New'],['learning','Learning'],['leech','Paused']]
+    .map(([k,l])=>`<option value="${k}"${f===k?' selected':''}>${l} · ${(by[k]||[]).length}</option>`).join('')}</select>
+   <span class="spacer"></span>
+   <select class="minisel" data-wsortsel>${[['new','Newest'],['old','Oldest'],['az','A – Z'],['za','Z – A'],['due','Due first']]
+    .map(([k,l])=>`<option value="${k}"${wsort===k?' selected':''}>${l}</option>`).join('')}</select></div>
   ${rows?`<div class="list">${rows}</div>`:'<div class="empty">No words here</div>'}
   <p style="font-size:12px;color:var(--label3);margin-top:13px">New today ${DB.stats.newToday||0} / ${newPerDay()}</p></div>`;
 }
@@ -3130,8 +3236,8 @@ function viewKnowledge(){
  const byDate=list=>list.slice().sort((a,b)=>order==='new'
   ?String(b.createdAt).localeCompare(String(a.createdAt))
   :String(a.createdAt).localeCompare(String(b.createdAt)));
- const sortChips=`<div class="seg tight" style="margin-bottom:10px">${[['new','Newest'],['old','Oldest']]
-  .map(([k,l])=>`<button data-ksort="${k}" aria-current="${order===k}">${l}</button>`).join('')}</div>`;
+ const sortSel=`<select class="minisel" data-ksortsel>${[['new','Newest'],['old','Oldest']]
+  .map(([k,l])=>`<option value="${k}"${order===k?' selected':''}>${l}</option>`).join('')}</select>`;
  const head=`<div class="largetitle"><h1>Knowledge</h1>
    <button class="btn sec sm" data-nav="review" style="margin-left:auto">Review</button></div>
   <div class="seg">${tabs.map(([k,l,c])=>`<button data-tab="${k}" aria-current="${state.tab===k}">${l}<span class="n">${c}</span></button>`).join('')}</div>`;
@@ -3139,12 +3245,13 @@ function viewKnowledge(){
  if(isQ){
   const f=state.qFilter||'Unanswered';
   const n=st=>K.questions.filter(q=>(q.status||'Unanswered')===st).length;
-  bar=`<div class="labelrow">
-   ${QSTATUS.map(([st,l])=>`<button class="lchip" data-qf="${st}" aria-current="${f===st}">${l}<span class="n">${n(st)}</span></button>`).join('')}
-   <button class="lchip" data-qf="all" aria-current="${f==='all'}">All<span class="n">${K.questions.length}</span></button></div>`;
+  bar=`<div class="toolrow">
+   <select class="minisel" data-qfsel>${[...QSTATUS.map(([st,l])=>[st,l,n(st)]),['all','All',K.questions.length]]
+    .map(([k,l,c])=>`<option value="${k}"${f===k?' selected':''}>${l} · ${c}</option>`).join('')}</select>
+   <span class="spacer"></span>${sortSel}</div>`;
   if(f!=='all')src=src.filter(q=>(q.status||'Unanswered')===f);
   src=byDate(src);
-  $view.innerHTML=`<div class="view">${head}${bar}${sortChips}
+  $view.innerHTML=`<div class="view">${head}${bar}
    ${src.length?`<div class="list">${src.map(o=>knowRow(o,tab)).join('')}</div>`:'<div class="empty">Nothing here</div>'}</div>`;
   return;
  }
@@ -3154,8 +3261,10 @@ function viewKnowledge(){
     into "everything I thought while reading this", which is how you go
     looking for an old note in the first place. */
  const group=state.kGroup||'recent';
- bar=`<div class="seg tight" style="margin-bottom:10px">${[['recent','All'],['doc','By document'],['tag','By tag']]
-  .map(([k,l])=>`<button data-kgroup="${k}" aria-current="${group===k}">${l}</button>`).join('')}</div>`;
+ bar=`<div class="toolrow">
+  <select class="minisel" data-kgroupsel>${[['recent','No grouping'],['doc','By document'],['tag','By tag']]
+   .map(([k,l])=>`<option value="${k}"${group===k?' selected':''}>${l}</option>`).join('')}</select>
+  <span class="spacer"></span>${sortSel}</div>`;
  let body='';
  if(group==='recent'){
   const list=byDate(src);
@@ -3180,7 +3289,7 @@ function viewKnowledge(){
     <span style="color:var(--label3);font-size:13px;font-weight:450;margin-left:7px">${items.length}</span></h3>
    <div class="list">${byDate(items).map(o=>knowRow(o,tab)).join('')}</div>`).join(''):'<div class="empty">Nothing here</div>';
  }
- $view.innerHTML=`<div class="view">${head}${bar}${sortChips}${body}</div>`;
+ $view.innerHTML=`<div class="view">${head}${bar}${body}</div>`;
 }
 /* The replacement for that Marks tab: the same highlights, filtered, but
    inside the document they belong to and with a tap to go back to the spot. */
@@ -3691,7 +3800,9 @@ document.addEventListener('click',async e=>{
  if(est)return epubGoChapter(EPUBV.chapter+ +est.dataset.epubstep);
  const ego=T.closest('[data-epubgo]');
  if(ego){if(window.innerWidth<=1120)$panel.classList.remove('open');
-  return epubGoChapter(+ego.dataset.epubgo);}
+  return epubGoChapter(+ego.dataset.epubgo,ego.dataset.epubfrag||null);}
+ const efr=T.closest('[data-epubfrag]');
+ if(efr&&!efr.dataset.epubgo){epubScrollToFrag(efr.dataset.epubfrag);return;}
  if(T.closest('[data-epubtoc]')){
   if(!EPUBV.toc)EPUBV.toc=await epubToc(EPUBV.book);
   state.panel={type:'epubtoc'};
@@ -3729,7 +3840,10 @@ document.addEventListener('click',async e=>{
  /* ---- folders ---- */
  const fc=T.closest('[data-folder]');
  if(fc){state.folderId=fc.dataset.folder||null;state.confirmDel=null;return render();}
- if(T.closest('[data-folderonly]')){state.folderOnly=!state.folderOnly;return render();}
+ const fm=T.closest('[data-foldermenu]');
+ if(fm){state.confirmDel=null;state.panel={type:'foldermenu',id:fm.dataset.foldermenu};
+  if(window.innerWidth<=1120)$panel.classList.add('open');
+  return paintPanel();}
  if(T.closest('[data-newfolder]')){
   state.panel={type:'foldername',parentId:state.folderId,domain:state.domain};return paintPanel();}
  const rf=T.closest('[data-renamefolder]');
@@ -3748,7 +3862,7 @@ document.addEventListener('click',async e=>{
   DB.index.folders=(DB.index.folders||[]).filter(x=>x.id!==id);
   if(!DB.index.deletedIds)DB.index.deletedIds=[];
   DB.index.deletedIds.push({id,at:now()});
-  state.folderId=up;state.confirmDel=null;
+  state.folderId=up;state.confirmDel=null;state.panel=null;
   save('pkos:index');flushWrites();await pushRemote();
   render();return toast('Folder deleted — its documents moved up');}
  if(T.closest('[data-foldsave]')){
@@ -4143,6 +4257,14 @@ document.addEventListener('keydown',e=>{
  if(e.key==='Escape'){killCo();if(state.panel){state.panel=null;paintPanel();}}
 });
 document.addEventListener('change',async e=>{
+ const sel=e.target;
+ if(sel.matches?.('[data-sortsel]')){state.sort=sel.value;return render();}
+ if(sel.matches?.('[data-scopesel]')){state.folderOnly=sel.value==='only';return render();}
+ if(sel.matches?.('[data-wfsel]')){state.wordFilter=sel.value;return render();}
+ if(sel.matches?.('[data-wsortsel]')){state.wSort=sel.value;return render();}
+ if(sel.matches?.('[data-qfsel]')){state.qFilter=sel.value;return render();}
+ if(sel.matches?.('[data-ksortsel]')){state.kSort=sel.value;return render();}
+ if(sel.matches?.('[data-kgroupsel]')){state.kGroup=sel.value;return render();}
  if(e.target.id==='readnum'){
   DB.prefs.read=Math.max(13,Math.min(34,+e.target.value||19));applyPrefs();store.set('pkos:prefs',DB.prefs);return;}
  if(e.target.id==='newnum'){
