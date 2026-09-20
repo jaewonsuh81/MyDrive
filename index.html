@@ -381,8 +381,14 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
 /* Reader-only: Marks/Translate/Chat/Aa/Contents/Edit, always reachable from the
    top of the panel — a scrolled-away document header should never be the only
    way back to these. Empty (no markup) outside the reader, so it takes no
-   space anywhere else. */
-.ptabs:not(:empty){padding:10px 15px 0}
+   space anywhere else. A wrapping row of six buttons left an orphaned last
+   button on its own line and changed height depending on the doc kind, which
+   read as the whole bar jumping/jutting out rather than sitting still — one
+   fixed-height row that scrolls sideways instead of wrapping fixes both. */
+.ptabs:not(:empty){padding:8px 15px;border-bottom:1px solid var(--sep)}
+.ptabsrow{flex-wrap:nowrap;overflow-x:auto;margin-bottom:0;scrollbar-width:none}
+.ptabsrow::-webkit-scrollbar{display:none}
+.ptabsrow .btn{flex:0 0 auto}
 .phead{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;height:50px;padding:0 15px;
   background:color-mix(in srgb,var(--window) 82%,transparent);
   -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);border-bottom:1px solid var(--sep)}
