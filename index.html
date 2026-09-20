@@ -231,11 +231,27 @@ h3.sec{font-size:16.5px;font-weight:600;letter-spacing:-.015em;margin:24px 0 9px
    selectable; the highlight layer sits above that, translucent marks
    positioned in the same fractional coordinate space so they track the
    page at any width. */
-.pdfstage{display:flex;flex-direction:column;align-items:center;gap:14px;padding:0 14px}
-.pdfnav{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--label2)}
-.pdfpageind{display:flex;align-items:center;gap:6px}
-.pdfcanvaswrap{position:relative;box-shadow:var(--shadow-l);border-radius:4px;overflow:hidden;background:#fff}
-.pdfcanvaswrap canvas{display:block}
+/* The bar sticks under the toolbar so zoom, night and Contents stay reachable
+   however far into a book you've scrolled. */
+.pdfbar{position:sticky;top:50px;z-index:20;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:8px 14px;margin-bottom:10px;background:var(--window);border-bottom:1px solid var(--sep)}
+.pdfbar .spacer{flex:1}
+.pdfbar .btn[aria-current="true"]{background:var(--blue);color:#fff}
+.pdfbar .tin{padding:5px 9px;font-size:12.5px}
+.pdfpagenow{font-size:12.5px;color:var(--label2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pdfscroll{display:flex;flex-direction:column;align-items:center;gap:14px;padding:0 8px 40px;
+  overflow-x:auto;overscroll-behavior-x:contain}
+/* A page keeps its box whether or not its canvas is currently drawn, so
+   releasing offscreen pixels never makes the document jump under the scrollbar. */
+.pdfpage{position:relative;flex:none;background:#fff;box-shadow:var(--shadow-l);border-radius:3px;
+  display:flex;align-items:center;justify-content:center}
+.pdfpage canvas{display:block;border-radius:3px}
+.pdfpnum{font-size:12px;color:var(--label3)}
+/* Night reading on fixed-layout pages is a filter over the picture — the
+   same trick fixed-layout readers use, since the content itself can't be
+   restyled without rewriting it. */
+.pdfscroll.night .pdfpage{background:#111}
+.pdfscroll.night canvas{filter:invert(1) hue-rotate(180deg) brightness(.92)}
 .pdftextlayer{position:absolute;inset:0;overflow:hidden;line-height:1;-webkit-user-select:text}
 .pdftextlayer span{color:transparent;cursor:text}
 .pdftextlayer ::selection{background:color-mix(in srgb,var(--blue) 26%,transparent)}
@@ -372,6 +388,13 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
 @media (max-width:720px){
   .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
   .app.nopanel{grid-template-columns:1fr}
+  /* Vertical space is the scarce resource on a phone, and this bar sits
+     between the reader and the page — tighten it rather than let it eat
+     two full rows' worth of the document. */
+  .pdfbar{padding:5px 10px;gap:4px;margin-bottom:6px}
+  .pdfbar .tin{width:100%;flex:1 1 120px}
+  .pdfbar .spacer{display:none}
+  .pdfscroll{padding:0 4px 30px;gap:10px}
   /* Sidebar becomes a slim two-row strip: a horizontally scrolling nav
      pill row, then a thin account/sign-in row underneath. Nothing here
      scrolls out of view — that was the bug (see #nav below). */
@@ -1042,6 +1065,10 @@ window.addEventListener('popstate',e=>{
 $main.addEventListener('scroll',()=>{
  $toolbar.classList.toggle('scrolled',$main.scrollTop>26);
  if(state.view==='reader'){const m=meta(state.docId);if(!m)return;
+  // A PDF's reading position is a page number, not a fraction of rendered
+  // blocks — and which pages are drawn is the observer's business, not the
+  // scroll handler's.
+  if(m.kind==='pdf')return pdfTrackScroll();
   // Draw more before the reader reaches the end of what exists.
   if(readerShown<readerBlocks.length&&
      $main.scrollTop+$main.clientHeight>$main.scrollHeight-1400){
@@ -1331,24 +1358,60 @@ async function viewReader(keep){
 let readerShownBefore=0;
 
 /* ---------- PDF reader ----------
-   A PDF document is never turned into a paragraph flow. Each page is drawn
+   A PDF document is never turned into a paragraph flow. Every page is drawn
    to a canvas exactly as pdf.js renders it, with an invisible text layer on
    top built from the same items pdf.js hands back — so selection, Translate,
    Highlight and Memo all work, but nothing about the page's own layout is
-   ever reconstructed or reordered. `pdfState` holds the one open pdf.js
-   document and which page is current; `meta(docId).page` is the durable,
-   synced copy of that (mirrors `progress`, which text documents use for the
-   same "where was I" purpose). */
-let pdfState={docId:null,doc:null,page:1,pageCount:1};
+   ever reconstructed or reordered.
+
+   That choice costs one thing: a page is a picture, so the text in it can't
+   be re-sized the way a plain-text document's can. (Reflowing an arbitrary
+   PDF means re-detecting its headings, columns and tables — the problem
+   Adobe solves with an ML model, not with geometry rules. Everything this
+   file used to do by hand was an attempt at that, and it never got
+   trustworthy.) So instead of reflow, the reader borrows what real PDF
+   readers do to stay readable without touching the content: continuous
+   scrolling, zoom presets including a one-column-wide setting for two-column
+   papers, a night filter, the PDF's own table of contents, and search that
+   jumps to a page.
+
+   Only pages near the viewport are rendered, and pages that scroll far away
+   have their canvases released again, so a 400-page book costs the same as
+   a 4-page one. */
+const PDFV={docId:null,doc:null,page:1,pageCount:1,baseW:612,baseH:792,
+ zoomMode:'fit',scale:1,io:null,outline:null,textCache:null,findHits:[],busy:new Set()};
+const PDF_ZOOMS=[1,1.25,1.5,2,3];          // multipliers on top of fit-to-width
+const PDF_RENDER_MARGIN='900px';           // how far outside the viewport to render ahead
+
 async function pdfGetDoc(m){
- if(pdfState.doc&&pdfState.docId===m.id)return pdfState.doc;
+ if(PDFV.doc&&PDFV.docId===m.id)return PDFV.doc;
  pdfLoadLib();
  const doc=await pdfjsLib.getDocument({url:sbAssetUrl(m.pdfPath)}).promise;
- pdfState={docId:m.id,doc,page:pdfState.docId===m.id?pdfState.page:(m.page||1),pageCount:doc.numPages};
+ const first=await doc.getPage(1),vp=first.getViewport({scale:1});
+ PDFV.doc=doc;PDFV.docId=m.id;PDFV.pageCount=doc.numPages;
+ PDFV.baseW=vp.width;PDFV.baseH=vp.height;
+ PDFV.page=Math.max(1,Math.min(doc.numPages,m.page||1));
+ PDFV.outline=null;PDFV.textCache=null;PDFV.findHits=[];
  return doc;
 }
+/* Fit-to-width is the baseline every other zoom level is expressed against,
+   so "1.5x" means 1.5x of whatever fits this screen — the same setting reads
+   sensibly on a phone and on a desktop. */
+function pdfComputeScale(){
+ const host=$('pdfscroll');
+ const avail=Math.max(260,(host?host.clientWidth:$main.clientWidth)-2);
+ const fit=avail/PDFV.baseW;
+ if(PDFV.zoomMode==='fit')return fit;
+ if(PDFV.zoomMode==='column')return fit*1.95;   // one column of a two-column paper, roughly
+ return fit*PDFV.zoomMode;
+}
+function pdfZoomLabel(){
+ if(PDFV.zoomMode==='fit')return 'Fit';
+ if(PDFV.zoomMode==='column')return 'Column';
+ return Math.round(PDFV.zoomMode*100)+'%';
+}
 async function viewReaderPdf(m,keep){
- loadDoc(m.id);   // warms docCache with the search text, for the "known words" count below — not awaited, it's not needed to draw the page itself
+ loadDoc(m.id);   // warms docCache with the search text for the "known words" count — not needed to draw a page
  let doc;
  try{doc=await pdfGetDoc(m);}
  catch(e){
@@ -1357,21 +1420,21 @@ async function viewReaderPdf(m,keep){
     ${SB.on?'Check your connection and try again.':'Sign in to fetch it.'}</div>
    <div class="flexrow"><button class="btn sec sm" data-nav="library">Back to Library</button></div></div>`;
   return;}
- pdfState.docId=m.id;pdfState.doc=doc;pdfState.pageCount=doc.numPages;
- pdfState.page=Math.max(1,Math.min(pdfState.pageCount,m.page||pdfState.page||1));
 
- // Re-rendering the same page for a reason that only touches the side
- // panel (a translation coming back, a note saved) would otherwise re-draw
- // the whole canvas from scratch every time — cheap to skip when the page
- // already showing is the one that's wanted.
- const already=$('pdfcanvaswrap');
- if(keep&&already&&already.dataset.docId===m.id&&+already.dataset.page===pdfState.page){
-  drawPdfHighlights(already.clientWidth,already.clientHeight);
+ // A redraw that only concerns the side panel (a translation coming back, a
+ // note saved, a highlight just added) must not rebuild the document and
+ // throw away scroll position. Once this document's pages are laid out, the
+ // only things that legitimately rebuild them are a zoom change and a
+ // resize, and both call pdfLayoutPages directly.
+ const already=$('pdfscroll');
+ if(already&&already.dataset.docId===m.id){
+  document.querySelectorAll('.pdfpage[data-done="1"]').forEach(h=>pdfPaintHighlights(+h.dataset.page));
   return;
  }
 
  const known=knownCount(m.id,(docCache[m.id]||{}).content||'');
  const st=docStat(m);
+ PDFV.scale=1;   // real value set by pdfLayoutPages once the container exists
  $view.innerHTML=`<div class="view reader pdfreader">
   <div class="rhead">
    <div class="rtools">
@@ -1381,87 +1444,220 @@ async function viewReaderPdf(m,keep){
    <div class="meta">${esc(m.author||'Unknown')}${st.w?` · ${st.w} words`:''}${st.m?` · ${st.m} highlights`:''}${st.n?` · ${st.n} memos`:''}${known?` · ${known} saved words here`:''}${
     m.originalUrl?` · <a href="${esc(m.originalUrl)}" target="_blank" rel="noopener">Open original ↗</a>`:''}</div>
   </div>
-  <div class="pdfstage">
-   <div class="pdfnav">
-    <button class="btn sec sm" id="pdfprev"${pdfState.page<=1?' disabled':''}>‹ Prev</button>
-    <span class="pdfpageind">Page
-     <input class="numin" id="pdfpageinput" type="number" min="1" max="${pdfState.pageCount}" value="${pdfState.page}" style="width:52px">
-     of ${pdfState.pageCount}</span>
-    <button class="btn sec sm" id="pdfnext"${pdfState.page>=pdfState.pageCount?' disabled':''}>Next ›</button>
-   </div>
-   <div class="pdfcanvaswrap" id="pdfcanvaswrap" data-doc-id="${m.id}" data-page="${pdfState.page}">
-    <canvas id="pdfcanvas"></canvas>
-    <div class="pdftextlayer" id="pdftextlayer"></div>
-    <div class="pdfhllayer" id="pdfhllayer"></div>
-   </div>
-  </div></div>`;
- $('pdfprev').onclick=()=>pdfGoPage(pdfState.page-1);
- $('pdfnext').onclick=()=>pdfGoPage(pdfState.page+1);
- $('pdfpageinput').onchange=e=>pdfGoPage(+e.target.value||1);
+  <div class="pdfbar">
+   <button class="btn sec sm" data-pdfzoom="out" aria-label="Zoom out">−</button>
+   <button class="btn sec sm" data-pdfzoom="cycle" id="pdfzoomlabel" style="min-width:64px">${pdfZoomLabel()}</button>
+   <button class="btn sec sm" data-pdfzoom="in" aria-label="Zoom in">+</button>
+   <button class="btn sec sm" data-pdfnight aria-current="${!!DB.prefs.pdfNight}">Night</button>
+   <button class="btn sec sm" data-pdfoutline>Contents</button>
+   <span class="spacer"></span>
+   <input class="tin sm" id="pdffind" placeholder="Find in document" style="width:150px">
+   <span class="pdfpagenow" id="pdfpagenow">${PDFV.page} / ${PDFV.pageCount}</span>
+  </div>
+  <div class="pdfscroll${DB.prefs.pdfNight?' night':''}" id="pdfscroll" data-doc-id="${m.id}"></div>
+ </div>`;
  lastReaderDoc=m.id;
- await pdfRenderPage();
+ pdfLayoutPages();
+ pdfScrollToPage(PDFV.page,false);
 }
-async function pdfGoPage(n){
- n=Math.max(1,Math.min(pdfState.pageCount,n));
- killCo();
- pdfState.page=n;
- const m=meta(pdfState.docId);
- if(m){m.page=n;m.progress=pdfState.pageCount?n/pdfState.pageCount:0;m.lastReadAt=now();save('pkos:index');}
- if(m)await viewReaderPdf(m,false);
+/* Lays out one placeholder per page at the current zoom, then lets the
+   observer fill in whichever ones are actually on screen. Called again on
+   every zoom change and resize — placeholders keep their scroll geometry
+   correct even before a page has drawn. */
+function pdfLayoutPages(){
+ const host=$('pdfscroll');if(!host)return;
+ PDFV.scale=pdfComputeScale();
+ const w=Math.round(PDFV.baseW*PDFV.scale),h=Math.round(PDFV.baseH*PDFV.scale);
+ host.innerHTML='';
+ let html='';
+ for(let p=1;p<=PDFV.pageCount;p++)
+  html+=`<div class="pdfpage" data-page="${p}" style="width:${w}px;height:${h}px"><span class="pdfpnum">${p}</span></div>`;
+ host.innerHTML=html;
+ PDFV.busy.clear();
+ if(PDFV.io)PDFV.io.disconnect();
+ PDFV.io=new IntersectionObserver(entries=>{
+  entries.forEach(en=>{
+   const p=+en.target.dataset.page;
+   if(en.isIntersecting)pdfRenderOne(p);
+   else pdfReleaseOne(p);
+  });
+ },{root:$main,rootMargin:PDF_RENDER_MARGIN});
+ host.querySelectorAll('.pdfpage').forEach(el=>PDFV.io.observe(el));
+ const lbl=$('pdfzoomlabel');if(lbl)lbl.textContent=pdfZoomLabel();
 }
-async function pdfRenderPage(){
- const wrap=$('pdfcanvaswrap'),canvas=$('pdfcanvas');if(!wrap||!canvas)return;
- const page=await pdfState.doc.getPage(pdfState.page);
- const dpr=window.devicePixelRatio||1;
- const targetW=Math.max(280,Math.min(wrap.clientWidth||760,900));
- const natural=page.getViewport({scale:1});
- const cssScale=targetW/natural.width;
- const cssViewport=page.getViewport({scale:cssScale});
- const pixViewport=page.getViewport({scale:cssScale*dpr});
- canvas.width=Math.ceil(pixViewport.width);canvas.height=Math.ceil(pixViewport.height);
- canvas.style.width=Math.ceil(cssViewport.width)+'px';canvas.style.height=Math.ceil(cssViewport.height)+'px';
- await page.render({canvasContext:canvas.getContext('2d'),viewport:pixViewport}).promise;
+async function pdfRenderOne(pageNum){
+ const holder=document.querySelector(`.pdfpage[data-page="${pageNum}"]`);
+ if(!holder||holder.dataset.done==='1'||PDFV.busy.has(pageNum))return;
+ PDFV.busy.add(pageNum);
+ try{
+  const page=await PDFV.doc.getPage(pageNum);
+  const dpr=Math.min(window.devicePixelRatio||1,2);   // capping this is the difference between a phone rendering a book and a phone running out of memory
+  const vp=page.getViewport({scale:PDFV.scale});
+  const pix=page.getViewport({scale:PDFV.scale*dpr});
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.ceil(pix.width);canvas.height=Math.ceil(pix.height);
+  const cssW=Math.ceil(vp.width),cssH=Math.ceil(vp.height);
+  canvas.style.width=cssW+'px';canvas.style.height=cssH+'px';
+  await page.render({canvasContext:canvas.getContext('2d'),viewport:pix}).promise;
+  if(!holder.isConnected){PDFV.busy.delete(pageNum);return;}   // zoomed or navigated away mid-render
 
- const cssW=Math.ceil(cssViewport.width),cssH=Math.ceil(cssViewport.height);
- wrap.style.width=cssW+'px';wrap.style.height=cssH+'px';
- wrap.dataset.docId=pdfState.docId;wrap.dataset.page=pdfState.page;
+  /* One <span> per pdf.js text item, invisible, positioned with the exact
+     matrix pdf.js itself uses to place that glyph run. Nothing here decides
+     reading order: DOM order is item order, i.e. the order the page's own
+     content stream drew them in. */
+  const tl=document.createElement('div');tl.className='pdftextlayer';
+  tl.style.width=cssW+'px';tl.style.height=cssH+'px';
+  const tc=await page.getTextContent();
+  const frag=document.createDocumentFragment();
+  tc.items.forEach(it=>{
+   if(!it.str)return;
+   const mtx=pdfjsLib.Util.transform(vp.transform,it.transform);
+   const span=document.createElement('span');
+   span.textContent=it.str;
+   span.style.cssText=`position:absolute;left:0;top:0;font-size:1px;line-height:1;white-space:pre;
+    transform-origin:0% 0%;transform:matrix(${mtx[0]},${mtx[1]},${mtx[2]},${mtx[3]},${mtx[4]},${mtx[5]})`;
+   frag.appendChild(span);
+  });
+  tl.appendChild(frag);
+  const hl=document.createElement('div');hl.className='pdfhllayer';
+  hl.style.width=cssW+'px';hl.style.height=cssH+'px';
 
- /* One <span> per pdf.js text item, invisible, positioned with the exact
-    matrix pdf.js itself uses to place that glyph run — the same
-    text-space→viewport transform the old crop-based extractor used, just
-    applied to a real DOM node instead of being read back apart as offsets.
-    Nothing here decides reading order; DOM order is simply item order,
-    i.e. whatever order the page's own content stream drew them in. */
- const tl=$('pdftextlayer');tl.innerHTML='';
- tl.style.width=cssW+'px';tl.style.height=cssH+'px';
- const tc=await page.getTextContent();
- const frag=document.createDocumentFragment();
- tc.items.forEach(it=>{
-  if(!it.str)return;
-  const mtx=pdfjsLib.Util.transform(cssViewport.transform,it.transform);
-  const span=document.createElement('span');
-  span.textContent=it.str;
-  span.style.cssText=`position:absolute;left:0;top:0;font-size:1px;line-height:1;white-space:pre;
-   transform-origin:0% 0%;transform:matrix(${mtx[0]},${mtx[1]},${mtx[2]},${mtx[3]},${mtx[4]},${mtx[5]})`;
-  frag.appendChild(span);
- });
- tl.appendChild(frag);
- drawPdfHighlights(cssW,cssH);
+  holder.style.width=cssW+'px';holder.style.height=cssH+'px';
+  holder.innerHTML='';holder.append(canvas,tl,hl);
+  holder.dataset.done='1';
+  pdfPaintHighlights(pageNum);
+ }catch(e){/* a page that won't draw shouldn't take the reader down with it */}
+ PDFV.busy.delete(pageNum);
 }
-function drawPdfHighlights(cssW,cssH){
- const layer=$('pdfhllayer');if(!layer)return;
- layer.innerHTML='';layer.style.width=cssW+'px';layer.style.height=cssH+'px';
- K.highlights.filter(h=>h.documentId===pdfState.docId&&!h.orphaned&&
-  h.position?.type==='pdf-rects'&&h.position.page===pdfState.page)
- .forEach(h=>(h.position.rects||[]).forEach(r=>{
+/* Far-offscreen pages give their pixels back. The placeholder keeps the same
+   box, so nothing under the scrollbar moves when a page is dropped. */
+function pdfReleaseOne(pageNum){
+ const holder=document.querySelector(`.pdfpage[data-page="${pageNum}"]`);
+ if(!holder||holder.dataset.done!=='1')return;
+ holder.innerHTML=`<span class="pdfpnum">${pageNum}</span>`;
+ delete holder.dataset.done;
+}
+function pdfPaintHighlights(pageNum){
+ const holder=document.querySelector(`.pdfpage[data-page="${pageNum}"]`);
+ const layer=holder?.querySelector('.pdfhllayer');if(!layer)return;
+ const w=parseFloat(layer.style.width)||1,h=parseFloat(layer.style.height)||1;
+ layer.innerHTML='';
+ K.highlights.filter(x=>x.documentId===PDFV.docId&&!x.orphaned&&
+  x.position?.type==='pdf-rects'&&x.position.page===pageNum)
+ .forEach(x=>(x.position.rects||[]).forEach(r=>{
   const d=document.createElement('div');
-  d.className='pdfhlmark';d.dataset.k=h.kind||'mark';d.dataset.hl=h.id;
-  d.style.left=(r.x*cssW)+'px';d.style.top=(r.y*cssH)+'px';
-  d.style.width=(r.w*cssW)+'px';d.style.height=(r.h*cssH)+'px';
+  d.className='pdfhlmark';d.dataset.k=x.kind||'mark';d.dataset.hl=x.id;
+  d.style.left=(r.x*w)+'px';d.style.top=(r.y*h)+'px';
+  d.style.width=(r.w*w)+'px';d.style.height=(r.h*h)+'px';
   layer.appendChild(d);
  }));
 }
-
+function pdfScrollToPage(n,smooth){
+ n=Math.max(1,Math.min(PDFV.pageCount,n));
+ const holder=document.querySelector(`.pdfpage[data-page="${n}"]`);
+ if(!holder)return;
+ PDFV.page=n;
+ const top=holder.offsetTop-70;
+ if(smooth)$main.scrollTo({top,behavior:'smooth'});else $main.scrollTop=top;
+ pdfMarkPage(n);
+}
+function pdfMarkPage(n){
+ const ind=$('pdfpagenow');if(ind)ind.textContent=`${n} / ${PDFV.pageCount}`;
+ const m=meta(PDFV.docId);
+ if(m&&m.page!==n){m.page=n;m.progress=PDFV.pageCount?n/PDFV.pageCount:0;m.lastReadAt=now();save('pkos:index');}
+}
+/* Which page is "current" while scrolling: the one covering the middle of
+   the viewport, which is what the page indicator and the saved reading
+   position both mean by it. */
+function pdfTrackScroll(){
+ const host=$('pdfscroll');if(!host)return;
+ const mid=$main.scrollTop+$main.clientHeight/2;
+ let cur=PDFV.page;
+ for(const el of host.querySelectorAll('.pdfpage')){
+  if(el.offsetTop<=mid&&el.offsetTop+el.offsetHeight>=mid){cur=+el.dataset.page;break;}
+ }
+ if(cur!==PDFV.page){PDFV.page=cur;pdfMarkPage(cur);}
+}
+function pdfSetZoom(mode){
+ PDFV.zoomMode=mode;
+ const keepPage=PDFV.page;
+ pdfLayoutPages();
+ pdfScrollToPage(keepPage,false);
+}
+function pdfZoomStep(dir){
+ const cur=PDFV.zoomMode;
+ if(cur==='column')return pdfSetZoom(dir>0?PDF_ZOOMS[PDF_ZOOMS.length-1]:'fit');
+ const i=PDF_ZOOMS.indexOf(cur==='fit'?1:cur);
+ const next=PDF_ZOOMS[Math.max(0,Math.min(PDF_ZOOMS.length-1,(i<0?0:i)+dir))];
+ pdfSetZoom(next===1?'fit':next);
+}
+/* The PDF's own table of contents, if it has one — pdf.js hands back the
+   real outline, so this is the document's structure as its author wrote it,
+   not anything guessed from the text. */
+async function pdfOutlinePanel(){
+ if(PDFV.outline===null){
+  try{PDFV.outline=await PDFV.doc.getOutline()||[];}catch(e){PDFV.outline=[];}
+ }
+ state.panel={type:'pdfoutline'};paintPanel();
+}
+function pdfOutlineHTML(){
+ const flat=[];
+ const walk=(items,depth)=>(items||[]).forEach((it,i)=>{
+  flat.push({title:it.title,depth,key:flat.length,dest:it.dest});
+  walk(it.items,depth+1);
+ });
+ walk(PDFV.outline||[],0);
+ PDFV.outlineFlat=flat;
+ if(!flat.length)return shell('Contents',`<div class="empty">This PDF has no built-in table of contents.</div>`);
+ return shell('Contents',`<div class="list">${flat.map(o=>
+  `<button class="item" data-pdfdest="${o.key}" style="padding-left:${12+o.depth*14}px">
+   <h4 style="font-weight:${o.depth?450:590}">${esc(o.title||'—')}</h4></button>`).join('')}</div>`);
+}
+async function pdfGoDest(key){
+ const o=(PDFV.outlineFlat||[])[key];if(!o||!o.dest)return;
+ try{
+  const dest=typeof o.dest==='string'?await PDFV.doc.getDestination(o.dest):o.dest;
+  const ref=dest?.[0];if(!ref)return;
+  const idx=typeof ref==='object'?await PDFV.doc.getPageIndex(ref):Number(ref);
+  pdfScrollToPage(idx+1,false);
+  if(window.innerWidth<=1120)$panel.classList.remove('open');
+ }catch(e){toast('Could not jump to that section');}
+}
+/* Search reads the same per-page text the Library's word count uses — order
+   inside a page doesn't matter for finding a phrase, only which page it's on. */
+async function pdfAllText(){
+ if(PDFV.textCache)return PDFV.textCache;
+ const out=[];
+ for(let p=1;p<=PDFV.pageCount;p++){
+  const page=await PDFV.doc.getPage(p);
+  const tc=await page.getTextContent();
+  out.push(tc.items.map(it=>it.str).join(' ').replace(/\s+/g,' '));
+ }
+ PDFV.textCache=out;return out;
+}
+async function pdfFind(q){
+ q=(q||'').trim();
+ if(q.length<2){PDFV.findHits=[];state.panel=null;return paintPanel();}
+ const pages=await pdfAllText();
+ const needle=q.toLowerCase(),hits=[];
+ pages.forEach((txt,i)=>{
+  const low=txt.toLowerCase();let at=low.indexOf(needle);
+  while(at!==-1&&hits.length<80){
+   hits.push({page:i+1,snippet:txt.slice(Math.max(0,at-40),at+needle.length+50)});
+   at=low.indexOf(needle,at+needle.length);
+   if(hits.filter(h=>h.page===i+1).length>=3)break;   // a few per page is enough to navigate by
+  }
+ });
+ PDFV.findHits=hits;PDFV.findQuery=q;
+ state.panel={type:'pdffind'};paintPanel();
+}
+function pdfFindHTML(){
+ const hits=PDFV.findHits||[];
+ if(!hits.length)return shell('Find',`<div class="empty">No match for “${esc(PDFV.findQuery||'')}”</div>`);
+ return shell('Find',`<div style="font-size:12px;color:var(--label3);margin-bottom:8px">${hits.length} result${hits.length===1?'':'s'} for “${esc(PDFV.findQuery||'')}”</div>
+  <div class="list">${hits.map(h=>`<button class="item" data-pdffindgo="${h.page}">
+   <h4>Page ${h.page}</h4><div class="b">…${esc(h.snippet)}…</div></button>`).join('')}</div>`);
+}
 function renderMargins(){
  const wrap=$('readwrap'),g=$('gutter');if(!wrap||!g)return;
  const wide=$main.clientWidth>=860;
@@ -1486,7 +1682,8 @@ function renderMargins(){
 let rz=null;
 window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{
  if(state.view!=='reader')return;
- if(meta(state.docId)?.kind==='pdf')pdfRenderPage();else renderMargins();
+ if(meta(state.docId)?.kind==='pdf'){const p=PDFV.page;pdfLayoutPages();pdfScrollToPage(p,false);}
+ else renderMargins();
 },160);});
 
 function offsetOf(node,off){
@@ -1539,16 +1736,23 @@ function onSel(){
 function onSelPdf(){
  const sel=window.getSelection();
  if(!sel||!sel.rangeCount||sel.isCollapsed)return;
- const r=sel.getRangeAt(0),tl=$('pdftextlayer');
- if(!tl||!tl.contains(r.commonAncestorContainer))return;
+ const r=sel.getRangeAt(0);
+ // Which page the selection belongs to comes from the page it physically
+ // landed in, not from whatever page the indicator happens to show — with
+ // continuous scrolling those are often different, and a selection that
+ // spans a page break belongs to the page it started on.
+ const startEl=r.startContainer.nodeType===3?r.startContainer.parentElement:r.startContainer;
+ const holder=startEl?.closest?.('.pdfpage');
+ const tl=holder?.querySelector('.pdftextlayer');
+ if(!tl)return;
  const text=sel.toString().replace(/\s+/g,' ').trim();if(!text)return;
  const tlRect=tl.getBoundingClientRect();
  const w=tlRect.width||1,h=tlRect.height||1;
  const rects=[...r.getClientRects()].map(cr=>({
   x:(cr.left-tlRect.left)/w,y:(cr.top-tlRect.top)/h,w:cr.width/w,h:cr.height/h}))
-  .filter(rc=>rc.w>0.0005&&rc.h>0.0005);
+  .filter(rc=>rc.w>0.0005&&rc.h>0.0005&&rc.y>=-0.02&&rc.y<=1.02);
  if(!rects.length)return;
- const pos={type:'pdf-rects',page:pdfState.page,rects};
+ const pos={type:'pdf-rects',page:+holder.dataset.page,rects};
  const info={text,pos};
  if($co&&$co.dataset.sig===text+'|'+posSig(pos))return;
  showCallout(r.getBoundingClientRect(),info);
@@ -1662,8 +1866,12 @@ function paintPanel(){
  $panel.classList.add('open');
  const H={result:resultHTML,memo:memoHTML,compose:composeHTML,detail:detailHTML,hl:hlHTML,
           docedit:docEditHTML,readset:readSetHTML,diag:diagHTML,data:dataHTML,account:accountHTML,
-          rowmenu:rowMenuHTML,adddoc:addDocPanelHTML};
+          rowmenu:rowMenuHTML,adddoc:addDocPanelHTML,
+          pdfoutline:pdfOutlineHTML,pdffind:pdfFindHTML};
  $panel.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
+ // Contents and Find are lists to pick from, not forms — stealing focus into
+ // them would take the keyboard away from the find box that just ran.
+ if(p.type==='pdfoutline'||p.type==='pdffind')return;
  const f=$panel.querySelector('textarea')||$panel.querySelector('input');if(f)f.focus();
 }
 function resultHTML(p){
@@ -1999,7 +2207,7 @@ async function recoverOrphanDocs(){
  if(n){save('pkos:index');render();toast(`Recovered ${n} document${n>1?'s':''} — check the titles`);}
  else toast('Found entries but could not read their content');
 }
-const BUILD='2026-09-19-native-pdf-pages';   // bump this string on every future patch, purely so a stale deploy is easy to spot
+const BUILD='2026-09-20-pdf-reader-scroll-zoom-toc';   // bump this string on every future patch, purely so a stale deploy is easy to spot
 function diagHTML(p){
  return shell('Diagnostics',`<div class="card">
   <div class="f"><div class="k">Build</div><div class="v">${esc(BUILD)} · pdf.js ${window.pdfjsLib?'loaded':'⚠ NOT loaded'}</div></div>
@@ -2554,6 +2762,29 @@ document.addEventListener('click',async e=>{
   ov.addEventListener('click',()=>ov.remove());
   document.body.appendChild(ov);
   return;}
+ /* PDF reader controls */
+ const pz=T.closest('[data-pdfzoom]');
+ if(pz){
+  const k=pz.dataset.pdfzoom;
+  if(k==='in')pdfZoomStep(1);
+  else if(k==='out')pdfZoomStep(-1);
+  else pdfSetZoom(PDFV.zoomMode==='column'?'fit':'column');   // the label doubles as the column-width toggle
+  return;}
+ if(T.closest('[data-pdfnight]')){
+  DB.prefs.pdfNight=!DB.prefs.pdfNight;store.set('pkos:prefs',DB.prefs);
+  $('pdfscroll')?.classList.toggle('night',!!DB.prefs.pdfNight);
+  T.closest('[data-pdfnight]').setAttribute('aria-current',!!DB.prefs.pdfNight);
+  return;}
+ if(T.closest('[data-pdfoutline]')){
+  await pdfOutlinePanel();
+  if(window.innerWidth<=1120)$panel.classList.add('open');
+  return;}
+ const pd=T.closest('[data-pdfdest]');
+ if(pd)return pdfGoDest(+pd.dataset.pdfdest);
+ const pf=T.closest('[data-pdffindgo]');
+ if(pf){pdfScrollToPage(+pf.dataset.pdffindgo,false);
+  if(window.innerWidth<=1120)$panel.classList.remove('open');
+  return;}
  const rm=T.closest('[data-rowmenu]');
  if(rm){state.panel={type:'rowmenu',item:meta(rm.dataset.rowmenu)};return paintPanel();}
  if(T.closest('[data-adddoc]')){state.panel={type:'adddoc'};return paintPanel();}
@@ -2944,6 +3175,16 @@ let qt=null;
 document.getElementById('q').addEventListener('input',e=>{
  clearTimeout(qt);const v=e.target.value.trim();
  qt=setTimeout(()=>{state.query=v;$main.scrollTop=0;render();},220);
+});
+/* Find-in-document is a different search from the app-wide one above: it
+   never leaves the document, it just says which pages a phrase is on. The
+   box only exists while a PDF is open, so this is delegated rather than
+   bound to the element. */
+let pft=null;
+document.addEventListener('input',e=>{
+ if(e.target.id!=='pdffind')return;
+ clearTimeout(pft);const v=e.target.value;
+ pft=setTimeout(()=>{pdfFind(v);if(window.innerWidth<=1120&&v.trim().length>=2)$panel.classList.add('open');},320);
 });
 function toast(msg){
  document.querySelectorAll('.toast').forEach(t=>t.remove());
