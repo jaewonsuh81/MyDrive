@@ -311,12 +311,19 @@ async function health(res, providerName) {
 
 /* A public endpoint with a billable key behind it is somebody else's free
    API. Two cheap guards: reject cross-site callers, and cap the burst rate a
-   single address can produce. Neither costs a database. */
+   single address can produce. Neither costs a database.
+
+   40/min was sized for occasional lookups, not for hovering across a page
+   while actually reading — a real reading pace alone can call for a dozen-
+   plus translations a minute, and this is a single-person deployment behind
+   a private URL (the cross-site check above is what actually keeps a
+   stranger's script off it), so the risk a much higher ceiling adds is
+   small next to how often 40 was getting hit by ordinary use. */
 const hits = new Map();
 function rateLimited(ip) {
   const now = Date.now();
   const windowMs = 60_000;
-  const max = 40;
+  const max = 120;
   const rec = hits.get(ip);
   if (!rec || now - rec.start > windowMs) {
     hits.set(ip, { start: now, n: 1 });
