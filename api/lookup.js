@@ -20,6 +20,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX_TEXT = 6000;      // cost guard (writing feedback needs more room)
 const MAX_BRIEFING = 24000; // a briefing is long by nature
 const MAX_SENTENCE = 1200;
+const MAX_CHAT_CONTEXT = 60000; // a short paper/chapter fits whole; longer docs are pre-filtered client-side
+const MAX_HISTORY = 6000;       // last few turns of a chat, not the whole thread
 
 const SYSTEM =
   'You are a bilingual English–Korean reading assistant inside a personal knowledge app ' +
@@ -115,6 +117,23 @@ SENTENCE: ${JSON.stringify(sentence)}
 Return JSON: {"explanation":str,"analogy":str}
 explanation = 왜 그런지, 어떤 원리가 작동하는지까지 3~5문장, 한국어
 analogy     = 짧은 비유 하나, 없으면 ""`,
+
+  /* Document-grounded chat. `text` carries the document (or, for long
+     documents, the client's best guess at the relevant slice of it — see
+     pickRelevantBlocks in the reader). Putting the big, mostly-repeated
+     document first and the changing turn last matches how Gemini's implicit
+     caching looks for a matching prefix, so a multi-turn conversation about
+     the same document gets cheaper as it goes on, with no extra code here. */
+  chat: (text, sentence, lang, history) => `TASK: answer the reader's latest question about the document below
+DOCUMENT (may be a filtered excerpt, not the full text):
+${text}
+
+CONVERSATION SO FAR (last line is the question to answer):
+${history || '(none yet)'}
+
+Return JSON: {"answer":str,"basis":str}
+answer = 마지막 질문에 대한 답, 한국어. 이 문서 내용에 근거해서만 답하고, 문서에 없는 내용이면 없다고 말한다.
+basis  = 답의 근거가 된 문서 속 구절을 짧게 그대로 인용 (없으면 "")`,
 };
 
 /* -------------------------------------------------------------- providers */
@@ -335,9 +354,11 @@ export default async function handler(req, res) {
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
   const mode = body.mode;
-  const text = String(body.text || '').slice(0, mode === 'briefing' ? MAX_BRIEFING : MAX_TEXT);
+  const textCap = mode === 'briefing' ? MAX_BRIEFING : mode === 'chat' ? MAX_CHAT_CONTEXT : MAX_TEXT;
+  const text = String(body.text || '').slice(0, textCap);
   const sentence = String(body.sentence || '').slice(0, MAX_SENTENCE);
   const lang = body.lang === 'ko' ? 'ko' : 'en';
+  const history = String(body.history || '').slice(0, MAX_HISTORY);
 
   if (!PROMPTS[mode]) return res.status(400).json({ error: 'Unknown mode: ' + mode });
   if (!text.trim()) return res.status(400).json({ error: 'Empty selection' });
@@ -349,7 +370,7 @@ export default async function handler(req, res) {
   if (!provider) return res.status(500).json({ error: 'Unknown provider: ' + providerName });
 
   try {
-    const raw = await provider({ system: SYSTEM, prompt: PROMPTS[mode](text, sentence, lang) });
+    const raw = await provider({ system: SYSTEM, prompt: PROMPTS[mode](text, sentence, lang, history) });
     // Answers for one selection never change, so let the CDN keep them for a day.
     res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
     return res.status(200).json(parseJSON(raw));
