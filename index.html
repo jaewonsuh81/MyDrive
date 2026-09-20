@@ -376,7 +376,13 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
 .actionbar button:active{background:var(--fill2)}
 
 /* ---------------- inspector ---------------- */
-.panel{background:var(--window);border-left:1px solid var(--sep);overflow:auto;padding:0 0 60px}
+.panel{background:var(--window);border-left:1px solid var(--sep);display:flex;flex-direction:column;overflow:hidden}
+.panelscroll{flex:1;min-height:0;overflow:auto;padding:0 0 60px}
+/* Reader-only: Marks/Translate/Chat/Aa/Contents/Edit, always reachable from the
+   top of the panel — a scrolled-away document header should never be the only
+   way back to these. Empty (no markup) outside the reader, so it takes no
+   space anywhere else. */
+.ptabs:not(:empty){padding:10px 15px 0}
 .phead{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;height:50px;padding:0 15px;
   background:color-mix(in srgb,var(--window) 82%,transparent);
   -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);border-bottom:1px solid var(--sep)}
@@ -518,7 +524,7 @@ mark.hl.on{box-shadow:0 0 0 2px var(--blue)}
     </div>
     <div id="view"></div>
   </main>
-  <aside class="panel" id="panel"></aside>
+  <aside class="panel" id="panel"><div class="ptabs" id="ptabs"></div><div class="panelscroll" id="panelscroll"></div></aside>
 </div>
 
 <script>
@@ -924,10 +930,33 @@ let state={view:'today',docId:null,panel:null,tab:'concepts',wordFilter:'all',hl
  domain:'all',folderId:null,folderOnly:false,sort:'recent',query:'',qFilter:'Unanswered',kGroup:'recent',kSort:'new',wSort:'new',reviewMode:'cards',digestOffset:0,revealed:false,testing:false,testQueue:[],
  briefLoading:false,pickVocab:new Set(),openDoc:null,allLinks:false,
  editing:null,prompt:null,promptSeed:0,essayText:'',essay:null,
- qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null};
+ qtype:null,choices:null,picked:null,clozeOk:null,sessionDone:0,confirmDel:null,panelCache:{}};
+
+/* The reader's side panel used to be one slot: opening Chat threw away
+   whatever Translate was showing, and vice versa, because each button just
+   overwrote state.panel. This turns state.panel into an accessor — every
+   assignment, from anywhere in the app, stashes the outgoing value under its
+   tab's key in state.panelCache before the new one lands, so switching tabs
+   never destroys the tab you left. Only the reader's own tabs (Marks,
+   Translate, Chat, Aa, Contents, Edit) are tracked; one-off panels (menus,
+   forms, settings) pass straight through untouched. */
+const READER_TAB_KEY={result:'translate',quicktr:'translate',detail:'translate',hl:'translate',
+ chat:'chat',dochl:'marks',readset:'aa',pdfoutline:'contents',epubtoc:'contents',docedit:'edit'};
+(function(){
+ let _panel=state.panel;
+ Object.defineProperty(state,'panel',{
+  get(){return _panel;},
+  set(next){
+   const key=_panel&&READER_TAB_KEY[_panel.type];
+   if(key)state.panelCache[key]=_panel;
+   _panel=next;
+  }
+ });
+})();
 
 const $=id=>document.getElementById(id);
-const $view=$('view'),$panel=$('panel'),$nav=$('nav'),$tb=$('tbtitle'),$tbback=$('tbback'),
+const $view=$('view'),$panel=$('panel'),$panelScroll=$('panelscroll'),$panelTabs=$('ptabs'),
+      $nav=$('nav'),$tb=$('tbtitle'),$tbback=$('tbback'),
       $toolbar=$('toolbar'),$usage=$('usage'),$main=$('main'),$app=$('app');
 
 (async function boot(){
@@ -1161,6 +1190,7 @@ window.addEventListener('popstate',e=>{
 $main.addEventListener('scroll',()=>{
  $toolbar.classList.toggle('scrolled',$main.scrollTop>26);
  if(state.view==='reader'){const m=meta(state.docId);if(!m)return;
+  schedulePrefetch();
   // A PDF's reading position is a page number, not a fraction of rendered
   // blocks — and which pages are drawn is the observer's business, not the
   // scroll handler's.
@@ -1553,8 +1583,9 @@ async function viewReader(keep){
    toast(`Resumed at ${Math.round(m.progress*100)}%`);
   }
   renderMargins();
+  schedulePrefetch();
  });
- if(fresh)lastReaderDoc=m.id;
+ if(fresh){state.panelCache={};lastReaderDoc=m.id;}
 }
 let readerShownBefore=0;
 
@@ -1684,6 +1715,7 @@ async function viewReaderPdf(m,keep){
   </div>
   <div class="pdfscroll" id="pdfscroll" data-doc-id="${m.id}"></div>
  </div>`;
+ if(lastReaderDoc!==m.id)state.panelCache={};
  lastReaderDoc=m.id;
  pdfLayoutPages();
  pdfScrollToPage(PDFV.page,false);
@@ -2132,6 +2164,7 @@ async function viewReaderEpub(m,keep){
  </div>`;
  $main.classList.toggle('paperink',(DB.prefs.ink||'auto')==='paper');
  await epubRenderChapter();
+ if(lastReaderDoc!==m.id)state.panelCache={};
  lastReaderDoc=m.id;
 }
 async function epubRenderChapter(){
@@ -2150,12 +2183,13 @@ async function epubRenderChapter(){
   {chapter:EPUBV.chapter,progress:book.spine.length?(EPUBV.chapter+1)/book.spine.length:0});
  $main.scrollTop=0;
  requestAnimationFrame(()=>{
-  if(EPUBV.frag){const ok=epubScrollToFrag(EPUBV.frag);EPUBV.frag=null;if(ok)return;}
+  if(EPUBV.frag){const ok=epubScrollToFrag(EPUBV.frag);EPUBV.frag=null;if(ok){schedulePrefetch();return;}}
   const place=m?.place;
   if(place&&place.chapter===EPUBV.chapter&&place.ratio>0.01){
    const h=$main.scrollHeight-$main.clientHeight;
    if(h>0)$main.scrollTop=place.ratio*h;
   }
+  schedulePrefetch();
  });
 }
 async function epubGoChapter(i,frag){
@@ -2347,6 +2381,56 @@ async function hoverTranslate(p){
   state.panel={type:'quicktr',data};paintPanel();
  }catch(e){if(hoverEl===p){state.panel={type:'quicktr',error:e.message};paintPanel();}}
 }
+/* Hovering still had to wait out a full round trip every time, because
+   nothing was translated until the cursor actually landed on it. This
+   pre-warms llm()'s own cache for a window of paragraphs around wherever the
+   reader currently is, so by the time the cursor gets there, hoverTranslate
+   above finds it already in DB.tcache and shows it with no wait at all.
+   Deliberately modest: one request in flight at a time, nothing re-fetched
+   that's already cached, and it bails immediately if auto-translate gets
+   turned off or the reader is left — this is a convenience prefetch, not a
+   reason to burn through the day's API quota translating a book no one is
+   reading yet. */
+let prefetchT=null,prefetchBusy=false;
+function schedulePrefetch(){
+ if(!DB.prefs.autoTr||state.view!=='reader')return;
+ if(meta(state.docId)?.kind==='pdf')return;
+ clearTimeout(prefetchT);
+ prefetchT=setTimeout(prefetchNearby,500);
+}
+const PREFETCH_WINDOW=20;   // paragraphs above and below the reading position
+async function prefetchNearby(){
+ // One pass at a time — a run already in flight keeps going at its own
+ // pace, and the scroll that just fired will get its own pass once this one
+ // finishes, rather than stacking N parallel passes that would all be racing
+ // the same rate limit for the same handful of paragraphs.
+ if(prefetchBusy||!DB.prefs.autoTr||state.view!=='reader')return;
+ const m=meta(state.docId);if(!m||m.kind==='pdf')return;
+ const root=m.kind==='epub'?$('epubbody'):$('docbody');
+ if(!root)return;
+ const sel=m.kind==='epub'?'p, li, blockquote, td, th':'[data-start]';
+ const all=[...root.querySelectorAll(sel)];
+ if(!all.length)return;
+ // "Here" is whichever paragraph sits closest to the middle of the viewport.
+ const mid=$main.scrollTop+$main.clientHeight/2;
+ let centerI=0,best=Infinity;
+ all.forEach((el,i)=>{const d=Math.abs(el.offsetTop-mid);if(d<best){best=d;centerI=i;}});
+ const from=Math.max(0,centerI-PREFETCH_WINDOW),to=Math.min(all.length,centerI+PREFETCH_WINDOW+1);
+ prefetchBusy=true;
+ try{
+  for(let i=from;i<to;i++){
+   if(!DB.prefs.autoTr||state.view!=='reader'||state.docId!==m.id)break;
+   const text=(all[i].textContent||'').trim();
+   if(text.length<8)continue;
+   const key=hash('passage|'+text);
+   if(DB.tcache[key]||inflight.has(key))continue;
+   try{await llm('passage',text,'',isKo(text)?'ko':'en',key);}
+   catch(e){/* a quota hiccup here just means this one paragraph stays slow on
+               actual hover — not worth surfacing as an error for a prefetch
+               nobody asked for by name */}
+  }
+ }finally{prefetchBusy=false;}
+}
 /* A selection's "position" is one of two shapes, and everything downstream
    (the dedup check, the highlight object, addHL) is written against this
    union rather than against text-reader internals — that's what let the PDF
@@ -2502,13 +2586,55 @@ function tagEditor(kind,o){
   `<span class="tg">${esc(t)}<button data-untag="${kind}:${o.id}:${esc(t)}">×</button></span>`).join('')}
   <input class="taginput" placeholder="+ tag" data-tagfor="${kind}:${o.id}"></div>`;
 }
+/* Marks / Translate / Chat / Aa / Contents / Edit — pinned to the top of the
+   panel itself rather than the document's scrolled-away header, so switching
+   between them never costs a scroll back to the top. Which doc kind is open
+   decides which tabs make sense (a plain-text doc has no Contents, a PDF has
+   neither Translate nor Aa — it has no paragraph DOM to hover and no font to
+   resize). Restoring a tab reads from state.panelCache; the accessor on
+   state.panel (above) is what keeps that cache filled. */
+function readerTabsHTML(){
+ if(state.view!=='reader'||!state.docId)return '';
+ const m=meta(state.docId);if(!m)return '';
+ const kind=m.kind;
+ const tabs=[
+  {key:'marks',label:'Marks'},
+  kind!=='pdf'?{key:'translate',label:'Translate'}:null,
+  {key:'chat',label:'Chat'},
+  kind!=='pdf'?{key:'aa',label:'Aa'}:null,
+  (kind==='pdf'||kind==='epub')?{key:'contents',label:'Contents'}:null,
+  {key:'edit',label:'Edit'},
+ ].filter(Boolean);
+ const activeKey=state.panel&&READER_TAB_KEY[state.panel.type];
+ return `<div class="seg ptabseg">${tabs.map(t=>
+  `<button data-ptab="${t.key}" aria-current="${activeKey===t.key}">${esc(t.label)}</button>`).join('')}</div>`;
+}
+/* Restores a cached tab as-is (a chat mid-conversation, the last thing
+   translated); only builds fresh content for tabs that don't accumulate
+   anything worth keeping (Marks/Aa/Contents/Edit are always a reflection of
+   current state, so rebuilding them is exactly as correct as caching them). */
+async function openReaderTab(key){
+ const m=meta(state.docId);
+ if(key==='chat'){state.panel=state.panelCache.chat||{type:'chat',docId:state.docId,messages:[]};}
+ else if(key==='translate'){state.panel=state.panelCache.translate||null;}
+ else if(key==='marks'){state.panel={type:'dochl'};}
+ else if(key==='aa'){state.panel={type:'readset'};}
+ else if(key==='edit'){await loadDoc(state.docId);state.confirmDel=null;state.panel={type:'docedit',item:m};}
+ else if(key==='contents'){
+  if(m?.kind==='pdf')await pdfOutlinePanel();
+  else{if(!EPUBV.toc)EPUBV.toc=await epubToc(EPUBV.book);state.panel={type:'epubtoc'};}
+ }
+ if(window.innerWidth<=1120)$panel.classList.add('open');
+ paintPanel();
+}
 function paintPanel(){
  const p=state.panel;
- if(DB.prefs.panel===false&&window.innerWidth>1120&&p)DB.prefs.panel=true,applyPrefs();
+ if(DB.prefs.panel===false&&window.innerWidth>1120&&(p||state.view==='reader'))DB.prefs.panel=true,applyPrefs();
+ $panelTabs.innerHTML=readerTabsHTML();
  if(!p){
   $panel.classList.remove('open');
   const recent=[...K.vocabulary].slice(-4).reverse();
-  $panel.innerHTML=shell('Details',`<div class="empty">Select text in a document</div>`+
+  $panelScroll.innerHTML=shell('Details',`<div class="empty">Select text in a document</div>`+
    (recent.length?`<h3 class="sec" style="font-size:13px;color:var(--label3);margin:18px 0 8px">Recent words</h3>
     <div class="list">${recent.map(v=>`<button class="item" data-item="vocabulary:${v.id}">
     <h4>${esc(v.word)}</h4><div class="b">${esc(v.contextualMeaning||v.meaning||'')}</div></button>`).join('')}</div>`:''));
@@ -2521,13 +2647,13 @@ function paintPanel(){
           dochl:dochlHTML,linkpick:linkPickHTML,
           foldername:folderNameHTML,foldermove:folderMoveHTML,foldermenu:folderMenuHTML,epubtoc:epubTocHTML,
           chat:chatHTML,quicktr:quickTrHTML};
- $panel.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
+ $panelScroll.innerHTML=(H[p.type]||(()=>shell('Details','')))(p);
  // Contents and Find are lists to pick from, not forms — stealing focus into
  // them would take the keyboard away from the find box that just ran.
  if(p.type==='pdfoutline'||p.type==='pdffind'||p.type==='dochl'||p.type==='epubtoc')return;
  if(p.type==='chat'){const log=$('chatlog');if(log)log.scrollTop=log.scrollHeight;return;}
  if(p.type==='quicktr')return;
- const f=$panel.querySelector('textarea')||$panel.querySelector('input');if(f)f.focus();
+ const f=$panelScroll.querySelector('textarea')||$panelScroll.querySelector('input');if(f)f.focus();
 }
 /* Deliberately bare: hovering a paragraph is a passing glance, not a study
    action, so this skips the header/source-quote/gist/terms that the manual
@@ -3304,6 +3430,17 @@ function viewWrite(){
  // and a tab for everything else.
  const wtab=state.wtab==='history'?'history':'compose';
 
+ // Today's references belong to the draft you're writing right now, not to
+ // the archive of everything you've ever written — so they show up in
+ // Compose (feeding "Use a reference" below), never in History.
+ const refsHTML=refs.length?`<div class="card">
+   <h3 class="sec" style="margin:0 0 8px">Today's references</h3>
+   <div class="list">${refs.map(l=>safeUrl(l.url)
+    ?`<a class="item" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
+       <h4 style="color:var(--blue)">${esc(l.title.slice(0,110))}</h4>
+       <div class="m"><span>${esc(host(l.url))}</span></div></a>`
+    :`<div class="item"><h4>${esc(l.title.slice(0,110))}</h4></div>`).join('')}</div></div>`:'';
+
  const stepHTML=f?`<div class="card">
    <div class="f"><div class="k">Rewritten</div>
     <div style="font-family:var(--serif);font-size:16.5px;line-height:1.65">${esc(f.corrected||'')}</div></div>
@@ -3315,7 +3452,7 @@ function viewWrite(){
     <button class="btn sec sm" data-usecorrected>Replace draft with it</button>
     <button class="btn sec sm" data-editdraft>Back to draft</button>
     <button class="btn sec sm" data-essayreset>Write another</button></div></div>`
- :`<div class="card">
+ :`${refsHTML}<div class="card">
    <div class="f"><div class="k">Prompt</div>
     <textarea class="tin" id="promptin" style="width:100%;min-height:48px;line-height:1.5">${esc(prompt)}</textarea>
     <div class="flexrow" style="gap:6px">
@@ -3336,12 +3473,6 @@ function viewWrite(){
     ${state.essayText?`<button class="btn sec sm" data-essayreset>Clear</button>`:''}</div></div>`;
 
  const historyHTML=`
-  ${refs.length?`<h3 class="sec">Today's references</h3>
-   <div class="list">${refs.map(l=>safeUrl(l.url)
-    ?`<a class="item" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener" style="display:block;text-decoration:none">
-       <h4 style="color:var(--blue)">${esc(l.title.slice(0,110))}</h4>
-       <div class="m"><span>${esc(host(l.url))}</span></div></a>`
-    :`<div class="item"><h4>${esc(l.title.slice(0,110))}</h4></div>`).join('')}</div>`:''}
   <h3 class="sec">Past drafts</h3>
   ${list.length?`<div class="list">${list.map(w=>`<button class="item" data-openw="${w.id}">
     <h4>${esc((w.prompt||w.body).slice(0,80))}</h4>
@@ -4124,6 +4255,7 @@ document.addEventListener('click',async e=>{
  // The kind filter now belongs to the in-document panel, so it repaints that
  // rather than the whole view.
  const hf=T.closest('[data-hf]');if(hf){state.hlFilter=hf.dataset.hf;return paintPanel();}
+ const pt=T.closest('[data-ptab]');if(pt)return openReaderTab(pt.dataset.ptab);
  if(T.closest('[data-dochl]')){state.panel={type:'dochl'};
   if(window.innerWidth<=1120)$panel.classList.add('open');
   return paintPanel();}
@@ -4265,9 +4397,11 @@ document.addEventListener('click',async e=>{
  const at=T.closest('[data-autotr]');
  if(at){DB.prefs.autoTr=!DB.prefs.autoTr;store.set('pkos:prefs',DB.prefs);
   hoverEl=null;clearTimeout(hoverT);
-  at.className='btn '+(DB.prefs.autoTr?'':'sec ')+'sm';return;}
+  at.className='btn '+(DB.prefs.autoTr?'':'sec ')+'sm';
+  if(DB.prefs.autoTr)schedulePrefetch();
+  return;}
  const cb=T.closest('[data-chat]');
- if(cb){state.panel={type:'chat',docId:cb.dataset.chat,messages:[]};return paintPanel();}
+ if(cb)return openReaderTab('chat');   // resumes the conversation already in progress, doesn't reset it
  if(T.closest('[data-chatsend]'))return sendChat();
  const cs=T.closest('[data-chatsave]');
  if(cs){
@@ -4386,7 +4520,7 @@ document.addEventListener('click',async e=>{
  if(ex){const p=state.panel;return act2(ex.dataset.explain,p.ctx);}
  if(T.closest('[data-retry]')){const p=state.panel;return act('word',p.ctx,p.mode==='term');}
  if(T.closest('[data-diag]')){
-  $panel.innerHTML=shell('Diagnostics','<div class="card"><span class="spin"></span>Checking…</div>');
+  $panelScroll.innerHTML=shell('Diagnostics','<div class="card"><span class="spin"></span>Checking…</div>');
   let out;
   try{const r=await fetch('/api/lookup');out={status:r.status,config:await r.json().catch(()=>'(not JSON)')};}
   catch(err){out={error:err.message};}
