@@ -660,7 +660,7 @@ function storageBytes(){
 const SB={url:null,anon:null,token:null,refresh:null,user:null,on:false,syncing:false,
  lastError:null,configured:null,warning:null};
 const SB_KEYS={'pkos:index':'index','pkos:knowledge':'knowledge','pkos:reviewlogs':'reviewlogs',
- 'pkos:prefs':'prefs','pkos:stats':'stats'};
+ 'pkos:prefs':'prefs','pkos:stats':'stats','pkos:tcache':'tcache'};
 const localMeta=()=>{try{return JSON.parse(localStorage.getItem('pkos:meta')||'{}');}catch(e){return {};}};
 const touchMeta=k=>{try{const m=localMeta();m[k]=now();localStorage.setItem('pkos:meta',JSON.stringify(m));}catch(e){}};
 
@@ -784,6 +784,22 @@ async function sbPull(){
    else if(localKey==='pkos:reviewlogs'){
     if(mergeById(DB.reviewlogs,row.value))await store.set('pkos:reviewlogs',DB.reviewlogs);
    }
+   else if(localKey==='pkos:tcache'){
+    /* Additive, like knowledge/reviewlogs above — a cache entry is never
+       edited, only ever added, so there's nothing to compare timestamps
+       over. This is also where entries a background pre-translate cron job
+       filed on the server (see api/pretranslate.js) actually reach the
+       browser: they land in app_state.tcache same as any device's own
+       pushes, and from here they're indistinguishable from a hover this
+       device already did itself. */
+    let added=0;
+    for(const k in(row.value||{})){if(!(k in DB.tcache)){DB.tcache[k]=row.value[k];added++;}}
+    if(added){
+     const ks=Object.keys(DB.tcache);
+     if(ks.length>TCACHE_CAP)ks.slice(0,ks.length-TCACHE_CAP).forEach(k=>delete DB.tcache[k]);
+     await store.set('pkos:tcache',DB.tcache);
+    }
+   }
    else{
     // Plain settings blobs, not merged collections — "whichever side was
     // touched more recently wins" is still the right rule here.
@@ -848,6 +864,24 @@ async function sbGetDoc(id){
 async function sbDeleteDoc(id){
  if(!SB.on)return;
  await sbRest(`documents?id=eq.${encodeURIComponent(id)}`,{method:'DELETE'});
+}
+/* A bundled Korean→English dictionary (see supabase-schema-dictionary.sql) —
+   public reference data, not a per-user row, so it works from the anon key
+   alone and needs no sign-in. Checked before spending an LLM call on a
+   Korean word: even a partial hit (hanja / the plain English correspondence)
+   can be shown the instant it's asked for, with the fuller, context-aware
+   meaning from llm() filled in a moment later — see the 'quick' branch in
+   act() and resultHTML(). A miss, or Supabase not configured at all, is
+   silent: the LLM-only path this app always had is exactly the fallback. */
+async function dictLookup(word,lang){
+ if(!SB.url||!SB.anon||!word)return null;
+ try{
+  const r=await fetch(`${SB.url}/rest/v1/dictionary?lang=eq.${lang}&headword=eq.${encodeURIComponent(word)}&select=headword,hanja,gloss&limit=1`,
+   {headers:{apikey:SB.anon,Authorization:'Bearer '+SB.anon}});
+  if(!r.ok)return null;
+  const rows=await r.json();
+  return rows[0]||null;
+ }catch(e){return null;}
 }
 /* Cropped formula/figure images live in Supabase Storage, not the database —
    a document's text is a handful of KB and belongs in a row; a few hundred
@@ -1035,6 +1069,11 @@ function applyPrefs(){
 
 /* ---------- language service ---------- */
 const hash=s=>{let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return 'h'+(h>>>0).toString(36);};
+// Raised from 200 now that a background cron (api/pretranslate.js) can also
+// be filling this cache while the tab is closed — a bigger local cap means
+// more of what it accumulated actually survives being pulled down instead
+// of getting immediately evicted again on the very next real lookup.
+const TCACHE_CAP=400;
 let API_MODE=null;            // 'server' | 'sandbox', latched only on proof
 const inflight=new Map();     // one request per identical lookup
 
@@ -1060,7 +1099,7 @@ async function llm(mode,text,sentence,lang,key){
   }
   DB.stats.apiCalls++;
   if(key){DB.tcache[key]=data;const ks=Object.keys(DB.tcache);
-   if(ks.length>200)ks.slice(0,ks.length-200).forEach(k=>delete DB.tcache[k]);save('pkos:tcache');}
+   if(ks.length>TCACHE_CAP)ks.slice(0,ks.length-TCACHE_CAP).forEach(k=>delete DB.tcache[k]);save('pkos:tcache');}
   save('pkos:stats');paintUsage();
   return data;
  })();
@@ -2543,8 +2582,12 @@ function onSelPdf(){
 }
 function showCallout(rect,sel){
  killCo();
- const isTerm=isKo(sel.text)?sel.text.length<=14:sel.text.split(/\s+/).length<=4;
- const b=[[isTerm?'Word':'Translate','word','word'],['Memo','memo','memo'],['Highlight','mark','mark']];
+ // Always all four — Translate and Word used to be one label-switching
+ // button decided by selection length, but that took the choice away: a
+ // two-word idiom is exactly the case someone might want looked up as a
+ // term instead of translated as a phrase, and a single word translated in
+ // its sentence rather than looked up. Explicit buttons, explicit choice.
+ const b=[['Translate','translate','word'],['Word','word','word'],['Memo','memo','memo'],['Highlight','mark','mark']];
  $co=document.createElement('div');$co.dataset.sig=sel.text+'|'+posSig(sel.pos);
  const narrow=window.innerWidth<=860;
  const btn=([l,a,k])=>`<button data-act="${a}"><span class="dot ${k}"></span>${l}</button>`;
@@ -2560,7 +2603,7 @@ function showCallout(rect,sel){
   $main.appendChild($co);
  }
  $co.onclick=ev=>{const a=ev.target.closest('[data-act]');if(!a)return;
-  act(a.dataset.act,sel,isTerm);killCo();window.getSelection()?.removeAllRanges();};
+  act(a.dataset.act,sel);killCo();window.getSelection()?.removeAllRanges();};
 }
 function addHL(ctx,kind){
  const dup=K.highlights.find(h=>h.documentId===ctx.documentId&&h.position&&posSig(h.position)===posSig(ctx.pos));
@@ -2576,7 +2619,7 @@ function addHL(ctx,kind){
   sentence:ctx.sentence,paragraph:ctx.paragraph,note:'',tags:[],createdAt:now(),updatedAt:now()};
  K.highlights.push(h);save('pkos:knowledge');return h;
 }
-async function act(kind,sel,isTerm){
+async function act(kind,sel){
  const ctx={text:sel.text,pos:sel.pos,lang:isKo(sel.text)?'ko':'en',documentId:state.docId};
  if(sel.pos.type==='text-offset'){
   const d=await loadDoc(state.docId);
@@ -2593,31 +2636,72 @@ async function act(kind,sel,isTerm){
  if(kind==='memo'){
   const h=addHL(ctx,'memo');await viewReader();
   state.panel={type:'memo',ctx,hl:h,memoKind:'thought'};return paintPanel();}
-
- /* word: highlight, look up, and file it away in one action */
- const h=addHL(ctx,'word');
- const mode=isTerm?'term':'passage';
- const key=hash(mode+'|'+sel.text+'|'+(isTerm?ctx.sentence:''));
- state.panel={type:'result',mode,ctx,loading:true};paintPanel();
- try{
-  const{data}=await llm(mode,sel.text,ctx.sentence,ctx.lang,key);
-  if(isTerm){
-   const v=makeVocab(data,ctx,h);
-   h.note=data.contextual||data.general||'';h.updatedAt=now();
-   save('pkos:knowledge');state.panel={type:'detail',kind:'vocabulary',item:v};
-   render();toast('Saved to Words');
-  }else{
-   h.translation=data.translation||'';h.note=data.translation||'';h.gist=data.gist||'';h.updatedAt=now();
-   save('pkos:knowledge');state.panel={type:'hl',item:h};
-   render();toast('Translated and kept');
-  }
- }catch(e){state.panel={type:'result',mode,ctx,error:e.message};paintPanel();}
+ if(kind==='word')return actWord(ctx);
+ if(kind==='translate')return actTranslate(ctx);
 }
-function makeVocab(d,c,h){
+/* Word: a single word or short idiom, always looked up as a term (not
+   translated as a phrase) and always saved to Vocabulary — that's the whole
+   point of picking this button over Translate. A Korean selection may
+   already sit in the bundled dictionary (dictLookup) — one indexed read,
+   effectively instant and free — so whatever it finds is painted the
+   moment it's back, while the LLM call that decides what actually gets
+   saved keeps running in parallel regardless.
+
+   The LLM's fuller answer (contextual meaning, example, tags) is never
+   forced onto the screen once it lands — it saves quietly and a toast says
+   so. Reading isn't interrupted by a detail view nobody asked to see; the
+   quick card stays up with a "Words에서 보기" link for whoever wants the rest. */
+async function actWord(ctx){
+ const h=addHL(ctx,'word');
+ const key=hash('term|'+ctx.text+'|'+ctx.sentence);
+ let quick=null;
+ const quickP=(ctx.lang==='ko')?dictLookup(ctx.text,'ko').then(q=>{
+  quick=q;
+  const p=state.panel;
+  if(q&&p&&p.type==='result'&&p.loading&&p.ctx===ctx){p.quick=q;paintPanel();}
+ }):null;
+ state.panel={type:'result',mode:'term',ctx,loading:true};paintPanel();
+ try{
+  const{data}=await llm('term',ctx.text,ctx.sentence,ctx.lang,key);
+  if(quickP)await quickP;
+  const v=makeVocab(data,ctx,h,quick);
+  h.note=data.contextual||data.general||'';h.updatedAt=now();
+  save('pkos:knowledge');
+  // Only take over what's on screen if it's still sitting on this exact
+  // lookup's loading card — if the reader has already selected something
+  // else or moved on, don't yank them back to show a save confirmation.
+  const p=state.panel;
+  if(p&&p.type==='result'&&p.mode==='term'&&p.ctx===ctx){p.loading=false;p.quick=quick;p.item=v;}
+  paintPanel();toast('Saved to Words');
+ }catch(e){
+  const p=state.panel;
+  if(p&&p.type==='result'&&p.mode==='term'&&p.ctx===ctx){p.loading=false;p.error=e.message;p.quick=quick;}
+  paintPanel();
+ }
+}
+/* Translate: always a passage-style translation, whatever the length —
+   unchanged from what this app already did for a longer selection. */
+async function actTranslate(ctx){
+ const h=addHL(ctx,'word');
+ const key=hash('passage|'+ctx.text+'|');
+ state.panel={type:'result',mode:'passage',ctx,loading:true};paintPanel();
+ try{
+  const{data}=await llm('passage',ctx.text,'',ctx.lang,key);
+  h.translation=data.translation||'';h.note=data.translation||'';h.gist=data.gist||'';h.updatedAt=now();
+  save('pkos:knowledge');state.panel={type:'hl',item:h};
+  render();toast('Translated and kept');
+ }catch(e){state.panel={type:'result',mode:'passage',ctx,error:e.message};paintPanel();}
+}
+function makeVocab(d,c,h,quick){
  const dup=K.vocabulary.find(v=>v.word===(d.term||c.text)&&v.sourceSentence===c.sentence);
  if(dup)return dup;
  const v={id:uid('vocab'),word:d.term||c.text,language:d.lang||c.lang,meaning:d.general||'',
-  contextualMeaning:d.contextual||'',partOfSpeech:d.pos||'',pronunciation:d.pron||d.hanja||'',
+  contextualMeaning:d.contextual||'',partOfSpeech:d.pos||'',pronunciation:d.pron||d.hanja||quick?.hanja||'',
+  // The bundled dictionary's plain English correspondence (see dictLookup) —
+  // kept even when the LLM already gave its own `en`, since a static
+  // dictionary hit is sourced independently and occasionally catches a
+  // sense the LLM's single guess didn't.
+  englishForm:d.en||quick?.gloss||'',
   exampleSentence:d.example||'',userExample:'',tags:(d.tags||[]).slice(0,3),
   sourceDocumentId:c.documentId,sourceHighlightId:(h||addHL(c,'word')).id,
   sourceSentence:c.sentence,sourceParagraph:c.paragraph,
@@ -2836,11 +2920,28 @@ async function sendChat(){
 }
 function resultHTML(p){
  const{ctx}=p;
- if(p.loading)return shell('Looking up',`<div class="card"><span class="spin"></span>Reading context…</div>`);
+ if(p.loading)return shell('Looking up',p.quick?`<div class="card">
+   <div class="f"><div class="k">Source</div><div class="quote">${esc(ctx.text)}</div></div>
+   ${p.quick.hanja?`<div class="f"><div class="k">Hanja</div><div class="v">${esc(p.quick.hanja)}</div></div>`:''}
+   <div class="f"><div class="k">English</div><div class="v">${esc(p.quick.gloss)}</div></div>
+   <div style="font-size:11.5px;color:var(--label3);margin-top:10px"><span class="spin"></span> 문맥에 맞는 의미 확인 중…</div>
+  </div>`:`<div class="card"><span class="spin"></span>Reading context…</div>`);
  if(p.error)return shell('Error',`<div class="err">${esc(p.error)}</div>
   <div class="acts"><button class="btn sm" data-retry>Try again</button>
    <button class="btn sec sm" data-diag>Diagnose</button></div>
   <div style="font-size:11.5px;color:var(--label3);margin-top:10px">route: ${API_MODE||'unknown'}</div>`);
+ // Word, done: the LLM's own fuller answer (contextual meaning, example,
+ // tags) was never surfaced here on purpose — it already went straight into
+ // the saved Vocabulary record. This card just confirms that happened and
+ // offers the one dictionary-sourced fact (if any) plus a way to open the
+ // full entry, without taking the reader there unasked.
+ if(p.mode==='term')return shell('Word',`<div class="card">
+  <div class="f"><div class="k">Source</div><div class="quote">${esc(ctx.text)}</div></div>
+  ${p.quick?.hanja?`<div class="f"><div class="k">Hanja</div><div class="v">${esc(p.quick.hanja)}</div></div>`:''}
+  ${p.quick?.gloss?`<div class="f"><div class="k">English</div><div class="v">${esc(p.quick.gloss)}</div></div>`:''}
+  <div style="font-size:11.5px;color:var(--label3);margin-top:10px">✓ Words에 저장됨</div>
+  ${p.item?`<div class="acts"><button class="btn sec sm" data-item="vocabulary:${p.item.id}">Words에서 자세히 보기</button></div>`:''}
+  </div>`);
  const d=p.data;
  if(p.mode==='passage')return shell('Passage',`<div class="card">
   <div class="f"><div class="k">Source</div><div class="quote">${esc(ctx.text)}</div></div>
@@ -2967,6 +3068,7 @@ function detailHTML(p){
   ${o.partOfSpeech?`<div class="pos">${esc(o.partOfSpeech)}</div>`:''}
   ${o.contextualMeaning?`<div class="f"><div class="k">In context</div><div class="v ko">${esc(o.contextualMeaning)}</div></div>`:''}
   ${o.meaning?`<div class="f"><div class="k">General</div><div class="v ko">${esc(o.meaning)}</div></div>`:''}
+  ${o.englishForm?`<div class="f"><div class="k">English</div><div class="v">${esc(o.englishForm)}</div></div>`:''}
   ${o.definition?`<div class="f"><div class="k">Definition</div><div class="v ko">${esc(o.definition)}</div></div>`:''}
   ${o.prompt?`<div class="f"><div class="k">Prompt</div><div class="v">${esc(o.prompt)}</div></div>`:''}
   ${o.body?`<div class="f"><div class="k">${t==='writings'?'Your draft':''}</div>
@@ -4617,7 +4719,7 @@ document.addEventListener('click',async e=>{
 
  const ex=T.closest('[data-explain]');
  if(ex){const p=state.panel;return act2(ex.dataset.explain,p.ctx);}
- if(T.closest('[data-retry]')){const p=state.panel;return act('word',p.ctx,p.mode==='term');}
+ if(T.closest('[data-retry]')){const p=state.panel;return p.mode==='passage'?actTranslate(p.ctx):actWord(p.ctx);}
  if(T.closest('[data-diag]')){
   $panelScroll.innerHTML=shell('Diagnostics','<div class="card"><span class="spin"></span>Checking…</div>');
   let out;
